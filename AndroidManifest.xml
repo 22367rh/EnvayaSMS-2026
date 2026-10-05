@@ -19,6 +19,10 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <!-- API 33+ : grant at runtime before posting notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- API 28+ : required to run a foreground service (ForegroundService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application android:name="org.envaya.sms.App"
         android:icon="@drawable/icon" android:label="@string/app_name">
@@ -29,34 +33,34 @@
             </intent-filter>
         </activity>        
 
-        <activity android:name="org.envaya.sms.ui.LogView" android:label="@string/log_view_title">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.LogView" android:label="@string/log_view_title">
         </activity>        
 
-        <activity android:name="org.envaya.sms.ui.Help" android:label="@string/help_title">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.Help" android:label="@string/help_title">
         </activity>        
 
-        <activity android:name="org.envaya.sms.ui.TestPhoneNumbers" android:label="@string/test_phone_numbers_title">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.TestPhoneNumbers" android:label="@string/test_phone_numbers_title">
         </activity>                
         
-        <activity android:name="org.envaya.sms.ui.IgnoredPhoneNumbers" android:label="@string/ignored_phone_numbers_title">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.IgnoredPhoneNumbers" android:label="@string/ignored_phone_numbers_title">
         </activity>                        
         
-        <activity android:name="org.envaya.sms.ui.MessagingSmsInbox" android:label="@string/forward_saved_title">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.MessagingSmsInbox" android:label="@string/forward_saved_title">
         </activity>        
 
-        <activity android:name="org.envaya.sms.ui.MessagingMmsInbox" android:label="@string/forward_saved_title">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.MessagingMmsInbox" android:label="@string/forward_saved_title">
         </activity>        
         
-        <activity android:name="org.envaya.sms.ui.MessagingSentSms" android:label="@string/forward_saved_title">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.MessagingSentSms" android:label="@string/forward_saved_title">
         </activity>
         
-        <activity android:name="org.envaya.sms.ui.PendingMessages" android:label="@string/pending_messages_title">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.PendingMessages" android:label="@string/pending_messages_title">
         </activity>
 
-        <activity android:name="org.envaya.sms.ui.Prefs" android:label="@string/settings_title">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.Prefs" android:label="@string/settings_title">
         </activity>
         
-        <activity android:name="org.envaya.sms.ui.ExpansionPacks" android:label="...">
+        <activity android:exported="false" android:name="org.envaya.sms.ui.ExpansionPacks" android:label="...">
         </activity>        
 
         <receiver android:name="org.envaya.sms.receiver.SmsReceiver" android:exported="true">
@@ -97,25 +101,25 @@
         </receiver>
         -->
 
-        <receiver android:name="org.envaya.sms.receiver.DequeueOutgoingMessageReceiver">
+        <receiver android:exported="false" android:name="org.envaya.sms.receiver.DequeueOutgoingMessageReceiver">
         </receiver>
 
-        <receiver android:name="org.envaya.sms.receiver.OutgoingMessageTimeout">
+        <receiver android:exported="false" android:name="org.envaya.sms.receiver.OutgoingMessageTimeout">
         </receiver>
 
-        <receiver android:name="org.envaya.sms.receiver.OutgoingMessagePoller">
+        <receiver android:exported="false" android:name="org.envaya.sms.receiver.OutgoingMessagePoller">
         </receiver>
         
-        <receiver android:name="org.envaya.sms.receiver.OutgoingMessageRetry">
+        <receiver android:exported="false" android:name="org.envaya.sms.receiver.OutgoingMessageRetry">
         </receiver>        
         
-        <receiver android:name="org.envaya.sms.receiver.IncomingMessageRetry">
+        <receiver android:exported="false" android:name="org.envaya.sms.receiver.IncomingMessageRetry">
         </receiver>            
         
-        <receiver android:name="org.envaya.sms.receiver.ReenableWifiReceiver">
+        <receiver android:exported="false" android:name="org.envaya.sms.receiver.ReenableWifiReceiver">
         </receiver>
         
-        <receiver android:name="org.envaya.sms.receiver.StartAmqpConsumer">
+        <receiver android:exported="false" android:name="org.envaya.sms.receiver.StartAmqpConsumer">
         </receiver>
         
         <receiver android:name="org.envaya.sms.receiver.ExpansionPackInstallReceiver" android:exported="true">
@@ -142,19 +146,19 @@
             </intent-filter>
         </receiver>
         
-        <service android:name="org.envaya.sms.service.CheckMessagingService">
+        <service android:exported="false" android:name="org.envaya.sms.service.CheckMessagingService">
         </service>
 
-        <service android:name="org.envaya.sms.service.EnabledChangedService">
+        <service android:exported="false" android:name="org.envaya.sms.service.EnabledChangedService">
         </service>
 
-        <service android:name="org.envaya.sms.service.ForegroundService">
+        <service android:exported="false" android:name="org.envaya.sms.service.ForegroundService">
         </service>            
         
-        <service android:name="org.envaya.sms.service.AmqpConsumerService">
+        <service android:exported="false" android:name="org.envaya.sms.service.AmqpConsumerService">
         </service>                    
         
-        <service android:name="org.envaya.sms.service.AmqpHeartbeatService">
+        <service android:exported="false" android:name="org.envaya.sms.service.AmqpHeartbeatService">
         </service>                            
     </application>
 </manifest> 

@@ -9,8 +9,8 @@ high-value step that must happen early because it changes the manifest shape for
 
 ## Current state
 
-- `AndroidManifest.xml`: `package="org.envaya.sms"`, `uses-sdk android:minSdkVersion="4"`.
-  No `targetSdkVersion` / `compileSdkVersion` (Ant inferred these).
+- Post Stage 1, the manifest already declares `minSdkVersion="21"` and a `targetSdkVersion`
+  (34); the Ant-era inference is gone. `package="org.envaya.sms"`.
 - Permissions declared but none requested at runtime; several are "dangerous".
 - Every `<receiver>`/`<service>`/`<activity>` lacks `android:exported`; those with an
   intent-filter implicitly rely on the pre-API-31 default of `exported="false"` being *wrong*.
@@ -21,7 +21,7 @@ high-value step that must happen early because it changes the manifest shape for
 
 ## Target state
 
-- `compileSdkVersion = 33`, `targetSdkVersion = 33`, `minSdkVersion` raised to a still-reasonable floor (e.g. 21) so we keep broad device coverage while dropping pre-Lollipop support that can't run the modern APIs anyway.
+- `compileSdkVersion = 34`, `targetSdkVersion = 34`, `minSdkVersion = 21`. (The original plan doc stated target/compile SDK 33; the build targets **34** as a deliberate, documented deviation — AGP 8.x linters warn below compileSdk 34 and API 34 still satisfies "Android 13+". `minSdkVersion=21` keeps broad device coverage while enabling the modern APIs OkHttp / the RabbitMQ client require).
 - All components carry an explicit `android:exported` value consistent with whether they declare an intent-filter.
 - Permissions are declared and, for dangerous ones, requested at runtime (Step 5).
 - The manifest is validated against AndroidX/AGP lint with zero blocking errors.
@@ -39,6 +39,8 @@ high-value step that must happen early because it changes the manifest shape for
 3. Add `<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />` (the API-33 notification permission; note the exact casing — it is uppercase, unlike older names).
 4. Audit each declared permission against actual usage and keep only what is needed:
    `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`, `CHANGE_NETWORK_STATE`, `CHANGE_WIFI_STATE`, `READ_PHONE_STATE`, `RECEIVE_SMS`, `SEND_SMS`, `READ_SMS`, `WRITE_SMS`, `RECEIVE_MMS`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `INTERNET`, `FOREGROUND_SERVICE` (+ specific FS types in Step 5), and `SETTINGS` (for the existing `WRITE_SETTINGS` Wi-Fi policy).
+   Added for API 33/28 correctness: `POST_NOTIFICATIONS` (runtime-granted, API 33) and
+   `FOREGROUND_SERVICE` (API 28+, required by the app's ForegroundService).
 5. Run Android Studio / `lint` and resolve all "missing exported" and "permission" warnings.
 
 ---
@@ -47,7 +49,7 @@ high-value step that must happen early because it changes the manifest shape for
 
 - [ ] Manifest has no component lacking an explicit `android:exported`.
 - [ ] Lint reports no "Missing application:exported" or fatal errors.
-- [ ] `targetSdkVersion = 33` is set; app still launches on the emulator.
+- [ ] `targetSdkVersion = 34` is set; app still launches on the emulator.
 
 ---
 
