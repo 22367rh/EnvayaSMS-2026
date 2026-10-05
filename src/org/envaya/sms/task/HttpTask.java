@@ -9,6 +9,8 @@ import org.envaya.sms.JsonUtils;
 import org.envaya.sms.Base64Coder;
 import org.envaya.sms.App;
 import org.envaya.sms.XmlUtils;
+import okhttp3.Request;
+import okhttp3.Response;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
@@ -23,9 +25,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import javax.xml.parsers.ParserConfigurationException;
 import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.message.BasicNameValuePair;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.w3c.dom.Document;
@@ -37,9 +36,9 @@ public class HttpTask extends BaseHttpTask {
     
     private boolean retryOnConnectivityError;
     
-    private BasicNameValuePair[] ctorParams;
+    private NameValuePair[] ctorParams;
         
-    public HttpTask(App app, BasicNameValuePair... paramsArr)
+    public HttpTask(App app, NameValuePair... paramsArr)
     {
         super(app, app.getServerUrl(), paramsArr);
         this.ctorParams = paramsArr;
@@ -61,13 +60,13 @@ public class HttpTask extends BaseHttpTask {
         Collections.sort(params, new Comparator() {
             public int compare(Object o1, Object o2)
             {
-                return ((BasicNameValuePair)o1).getName().compareTo(((BasicNameValuePair)o2).getName());
+                return ((NameValuePair)o1).getName().compareTo(((NameValuePair)o2).getName());
             }
         });
 
         StringBuilder builder = new StringBuilder();
         builder.append(url);
-        for (BasicNameValuePair param : params)
+        for (NameValuePair param : params)
         {
             builder.append(",");
             builder.append(param.getName());
@@ -88,7 +87,7 @@ public class HttpTask extends BaseHttpTask {
     }    
     
     @Override
-    protected HttpResponse doInBackground(String... ignored) {        
+    protected Response doInBackground(String... ignored) {        
         url = app.getServerUrl();        
         
         if (url.length() == 0) {
@@ -98,12 +97,12 @@ public class HttpTask extends BaseHttpTask {
 
         logEntries = app.getNewLogEntries();        
         
-        params.add(new BasicNameValuePair("phone_number", app.getPhoneNumber()));
-        params.add(new BasicNameValuePair("phone_id", app.getPhoneID()));
-        params.add(new BasicNameValuePair("phone_token", app.getPhoneToken()));
-        params.add(new BasicNameValuePair("send_limit", "" + app.getOutgoingMessageLimit()));
-        params.add(new BasicNameValuePair("now", "" + System.currentTimeMillis()));
-        params.add(new BasicNameValuePair("settings_version", "" + app.getSettingsVersion()));
+        params.add(new NameValuePair("phone_number", app.getPhoneNumber()));
+        params.add(new NameValuePair("phone_id", app.getPhoneID()));
+        params.add(new NameValuePair("phone_token", app.getPhoneToken()));
+        params.add(new NameValuePair("send_limit", "" + app.getOutgoingMessageLimit()));
+        params.add(new NameValuePair("now", "" + System.currentTimeMillis()));
+        params.add(new NameValuePair("settings_version", "" + app.getSettingsVersion()));
         
         Intent lastBatteryIntent = app.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         
@@ -117,14 +116,14 @@ public class HttpTask extends BaseHttpTask {
             
             if (pctLevel >= 0)
             {
-                params.add(new BasicNameValuePair("battery", "" + pctLevel));
+                params.add(new NameValuePair("battery", "" + pctLevel));
             }
             
             int plugged = lastBatteryIntent.getIntExtra("plugged", -1);            
             
             if (plugged >= 0)
             {
-                params.add(new BasicNameValuePair("power", "" + plugged));
+                params.add(new NameValuePair("power", "" + plugged));
             }
         }
         
@@ -134,25 +133,25 @@ public class HttpTask extends BaseHttpTask {
         NetworkInfo activeNetwork = cm.getActiveNetworkInfo();        
         if (activeNetwork != null)
         {
-            params.add(new BasicNameValuePair("network", "" + activeNetwork.getTypeName()));
+            params.add(new NameValuePair("network", "" + activeNetwork.getTypeName()));
         }
         
-        params.add(new BasicNameValuePair("log", logEntries));
+        params.add(new NameValuePair("log", logEntries));
                 
         return super.doInBackground();        
     }
     
     @Override
-    protected HttpPost makeHttpPost()
+    protected Request makeHttpPost()
             throws Exception
     {
-        HttpPost httpPost = super.makeHttpPost();
+        Request request = super.makeHttpPost();
 
         String signature = getSignature();
             
-        httpPost.setHeader("X-Request-Signature", signature);
+        request = request.newBuilder().header("X-Request-Signature", signature).build();
         
-        return httpPost;   
+        return request;   
     }
     
     protected String getDefaultToAddress()
@@ -195,42 +194,19 @@ public class HttpTask extends BaseHttpTask {
     }                
         
     @Override
-    protected void handleRequestException(Throwable ex)
-    {    
-        if (ex instanceof IOException)
-        {
-            app.logError("Error while contacting server", ex);
-            
-            if (ex instanceof UnknownHostException || ex instanceof SocketTimeoutException)
-            {                
-                if (retryOnConnectivityError)
-                {
-                    app.addQueuedTask(getCopy());
-                }
-                
-                app.onConnectivityError();
-            }
-        }
-        else
-        {
-            app.logError("Unexpected error while contacting server", ex, true);           
-        }        
-    }    
-    
-    @Override
-    public void handleErrorResponse(HttpResponse response) throws Exception
-    {            
+    public void handleErrorResponse(Response response) throws Exception {            
         app.log(getErrorText(response));       
     }
     
     @Override
-    protected void handleResponse(HttpResponse response) throws Exception {
+    protected void handleResponse(Response response) throws Exception {
 
         String contentType = getContentType(response);
         
         if (contentType.startsWith("application/json"))
         {
-            String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+            // Consume the OkHttp body exactly once.
+            String responseBody = response.body().string();
         
             JSONObject json = new JSONObject(responseBody);
             

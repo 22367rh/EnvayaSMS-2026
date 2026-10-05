@@ -10,7 +10,7 @@ import java.util.List;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
-import org.apache.http.HttpResponse;
+import okhttp3.Response;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.w3c.dom.Document;
@@ -20,9 +20,10 @@ import org.xml.sax.SAXException;
 
 public class XmlUtils {
     
-    public static Document parseResponse(HttpResponse response)
+    public static Document parseResponse(Response response)
             throws IOException, ParserConfigurationException, SAXException {
-        InputStream responseStream = response.getEntity().getContent();
+        // Consume the OkHttp body exactly once.
+        InputStream responseStream = response.body().byteStream();
         DocumentBuilder xmlBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
         return xmlBuilder.parse(responseStream);
     }

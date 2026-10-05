@@ -4,7 +4,7 @@ import android.content.Intent;
 import android.os.SystemClock;
 import org.envaya.sms.receiver.IncomingMessageRetry;
 import org.envaya.sms.task.ForwarderTask;
-import org.apache.http.message.BasicNameValuePair;
+import org.envaya.sms.task.NameValuePair;
 
 public abstract class IncomingMessage extends QueuedMessage {
 
@@ -200,9 +200,9 @@ public abstract class IncomingMessage extends QueuedMessage {
     protected ForwarderTask getForwarderTask()
     {
         ForwarderTask task = new ForwarderTask(this,
-            new BasicNameValuePair("message_type", getMessageType()),
-            new BasicNameValuePair("message", getMessageBody()),
-            new BasicNameValuePair("timestamp", "" + getTimestamp())
+            new NameValuePair("message_type", getMessageType()),
+            new NameValuePair("message", getMessageBody()),
+            new NameValuePair("timestamp", "" + getTimestamp())
         );
         
         if (direction == Direction.Sent)

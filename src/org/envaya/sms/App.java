@@ -30,22 +30,13 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
-import org.apache.http.client.HttpClient;
-import org.apache.http.conn.scheme.PlainSocketFactory;
-import org.apache.http.conn.scheme.Scheme;
-import org.apache.http.conn.scheme.SchemeRegistry;
-import org.apache.http.conn.ssl.SSLSocketFactory;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
-import org.apache.http.params.BasicHttpParams;
-import org.apache.http.params.HttpConnectionParams;
-import org.apache.http.params.HttpParams;
-import org.apache.http.params.HttpProtocolParams;
+import java.util.concurrent.TimeUnit;
+import okhttp3.OkHttpClient;
 import org.envaya.sms.receiver.OutgoingMessagePoller;
 import org.envaya.sms.task.CheckConnectivityTask;
 import org.envaya.sms.task.HttpTask;
 import org.envaya.sms.task.PollerTask;
-import org.apache.http.message.BasicNameValuePair;
+import org.envaya.sms.task.NameValuePair;
 import org.json.JSONArray;
 import org.json.JSONException;
 
@@ -284,8 +275,8 @@ public final class App extends Application {
         log("To increase this limit, install an expansion pack.");
                 
         HttpTask task = new HttpTask(this, 
-            new BasicNameValuePair("action", App.ACTION_DEVICE_STATUS),
-            new BasicNameValuePair("status", App.DEVICE_STATUS_SEND_LIMIT_EXCEEDED)
+            new NameValuePair("action", App.ACTION_DEVICE_STATUS),
+            new NameValuePair("status", App.DEVICE_STATUS_SEND_LIMIT_EXCEEDED)
         );        
         task.setRetryOnConnectivityError(true);
         task.execute();
@@ -863,37 +854,24 @@ public final class App extends Application {
         return true;
     }
     
-    private HttpClient httpClient;
+    private OkHttpClient httpClient;
     
-    public HttpParams getDefaultHttpParams()
-    {
-        HttpParams httpParams = new BasicHttpParams();
-        HttpConnectionParams.setConnectionTimeout(httpParams, HTTP_CONNECTION_TIMEOUT);
-        HttpConnectionParams.setSoTimeout(httpParams, HTTP_SOCKET_TIMEOUT);                    
-        HttpProtocolParams.setContentCharset(httpParams, "UTF-8");            
-        return httpParams;
-    }
-    
-    public synchronized HttpClient getHttpClient()
+    /**
+     * Shared OkHttp client for all server requests. Replaces the old Apache
+     * HttpClient stack, which was removed from the Android platform in API 23+.
+     * Uses OkHttp's default, secure TLS with proper hostname verification -- the
+     * old Apache BROWSER_COMPATIBLE_HOSTNAME_VERIFIER was insecure and is gone.
+     * Timeouts mirror the HTTP_CONNECTION_TIMEOUT / HTTP_SOCKET_TIMEOUT constants.
+     */
+    public synchronized OkHttpClient getHttpClient()
     {
         if (httpClient == null)
         {
-            // via http://thinkandroid.wordpress.com/2009/12/31/creating-an-http-client-example/
-            // also http://hc.apache.org/httpclient-3.x/threading.html
-            
-            HttpParams httpParams = getDefaultHttpParams();            
-            
-            SchemeRegistry registry = new SchemeRegistry();
-            registry.register(new Scheme("http", PlainSocketFactory.getSocketFactory(), 80));
-            
-            final SSLSocketFactory sslSocketFactory = SSLSocketFactory.getSocketFactory();            
-            sslSocketFactory.setHostnameVerifier(SSLSocketFactory.BROWSER_COMPATIBLE_HOSTNAME_VERIFIER);
-            
-            registry.register(new Scheme("https", sslSocketFactory, 443));
-
-            ThreadSafeClientConnManager manager = new ThreadSafeClientConnManager(httpParams, registry);            
-            
-            httpClient = new DefaultHttpClient(manager, httpParams);        
+            httpClient = new OkHttpClient.Builder()
+                    .connectTimeout(HTTP_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)
+                    .readTimeout(HTTP_SOCKET_TIMEOUT, TimeUnit.MILLISECONDS)
+                    .writeTimeout(HTTP_SOCKET_TIMEOUT, TimeUnit.MILLISECONDS)
+                    .build();
         }
         return httpClient;
     }      

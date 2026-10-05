@@ -24,7 +24,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
-import org.apache.http.message.BasicNameValuePair;
+import org.envaya.sms.task.NameValuePair;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -309,8 +309,8 @@ public class AmqpConsumer {
             consumeThread.start();
             
             HttpTask task = new HttpTask(app, 
-                new BasicNameValuePair("action", App.ACTION_AMQP_STARTED),
-                new BasicNameValuePair("consumer_tag", consumer.getConsumerTag())
+                new NameValuePair("action", App.ACTION_AMQP_STARTED),
+                new NameValuePair("consumer_tag", consumer.getConsumerTag())
             );
             task.execute();
                      

@@ -48,8 +48,9 @@ dependencies {
     //   * rabbitmq-client.jar / commons-io jars are carried over from libs/
     //     and replaced with Maven dependencies in later steps (Steps 3 & 9).
     // ------------------------------------------------------------------
-    implementation 'org.apache.httpcomponents:httpclient:4.1.2'
-    implementation 'org.apache.httpcomponents:httpmime:4.1.2'
+    // Stage 3 migrated the HTTP layer off org.apache.http.* (removed from
+    // the platform in API 23) to OkHttp, so these temporary deps are gone.
+    implementation 'com.squareup.okhttp3:okhttp:3.14.9'
 
     implementation files('../libs/rabbitmq-client.jar')
     implementation files('../libs/commons-io-1.2.jar')

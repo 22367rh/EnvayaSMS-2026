@@ -18,8 +18,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import org.apache.http.HttpResponse;
-import org.apache.http.message.BasicNameValuePair;
+import okhttp3.Response;
+import org.envaya.sms.task.NameValuePair;
 import org.envaya.sms.App;
 import org.envaya.sms.R;
 import java.util.ArrayList;
@@ -59,11 +59,11 @@ public class LogView extends Activity {
     private class TestTask extends HttpTask
     {
         public TestTask() {
-            super(LogView.this.app, new BasicNameValuePair("action", App.ACTION_TEST));   
+            super(LogView.this.app, new NameValuePair("action", App.ACTION_TEST));   
         }
         
         @Override
-        protected void handleResponse(HttpResponse response) throws Exception 
+        protected void handleResponse(Response response) throws Exception 
         {
             app.log("Server connection OK!");            
         }

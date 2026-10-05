@@ -2,97 +2,110 @@ package org.envaya.sms.task;
 
 import android.os.AsyncTask;
 import android.os.Build;
-import org.envaya.sms.App;
-import org.envaya.sms.JsonUtils;
-import org.envaya.sms.XmlUtils;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import org.apache.http.Header;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.mime.FormBodyPart;
-import org.apache.http.entity.mime.MultipartEntity;
-import org.apache.http.entity.mime.content.StringBody;
-import org.apache.http.message.BasicNameValuePair;
+import okhttp3.FormBody;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import org.json.JSONObject;
 import org.w3c.dom.Document;
+import org.envaya.sms.App;
+import org.envaya.sms.JsonUtils;
 import org.envaya.sms.R;
+import org.envaya.sms.XmlUtils;
 
-public class BaseHttpTask extends AsyncTask<String, Void, HttpResponse> {
-       
+/**
+ * Base class for background server requests. The transport has been migrated off
+ * the old Apache HTTP stack (gone from the platform in API 23) to OkHttp:
+ * request building produces an okhttp3.Request and the async result is an
+ * okhttp3.Response. Response-processing callbacks, content-type dispatch and the
+ * X-Request-Signature header are preserved unchanged in logic.
+ */
+public class BaseHttpTask extends AsyncTask<String, Void, Response> {
+    
     protected App app;
     protected String url;    
-    protected List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();    
+    protected List<NameValuePair> params = new ArrayList<NameValuePair>();    
 
-    private List<FormBodyPart> formParts;
+    private List<MultipartPart> formParts;
     protected boolean useMultipartPost = false;    
-    protected HttpPost post;
+    protected Request post;
     protected Throwable requestException;
     
-    public BaseHttpTask(App app, String url, BasicNameValuePair... paramsArr)
+    public BaseHttpTask(App app, String url, NameValuePair... paramsArr)
     {
         this.url = url;
         this.app = app;                
-        params = new ArrayList<BasicNameValuePair>(Arrays.asList(paramsArr));
+        params = new ArrayList<NameValuePair>(Arrays.asList(paramsArr));
         
-        params.add(new BasicNameValuePair("version", "" + app.getPackageInfo().versionCode));
+        params.add(new NameValuePair("version", "" + app.getPackageInfo().versionCode));
     }
     
     public void addParam(String name, String value)
     {
-        params.add(new BasicNameValuePair(name, value));
+        params.add(new NameValuePair(name, value));
     }    
     
-    public void setFormParts(List<FormBodyPart> formParts)
+    public void setFormParts(List<MultipartPart> formParts)
     {
         useMultipartPost = true;
         this.formParts = formParts;
     }                     
 
-    protected HttpPost makeHttpPost() throws Exception
+    protected Request makeHttpPost() throws Exception
     {
-        HttpPost httpPost = new HttpPost(url);
-                
-        httpPost.setHeader("User-Agent", app.getText(R.string.app_name) + "/" + app.getPackageInfo().versionName + " (Android; SDK "+Build.VERSION.SDK_INT + "; " + Build.MANUFACTURER + "; " + Build.MODEL+")");
+        Request.Builder requestBuilder = new Request.Builder().url(url);
 
+        requestBuilder.header("User-Agent", app.getText(R.string.app_name) + "/" + app.getPackageInfo().versionName + " (Android; SDK " + Build.VERSION.SDK_INT + "; " + Build.MANUFACTURER + "; " + Build.MODEL + ")");
+
+        RequestBody body;
         if (useMultipartPost)
         {
-            MultipartEntity entity = new MultipartEntity();//HttpMultipartMode.BROWSER_COMPATIBLE);
-
-            Charset charset = Charset.forName("UTF-8");
-
-            for (BasicNameValuePair param : params)
+            // Order preserved: text params first, then binary parts -- matches the
+            // previous multipart-entity field ordering. MultipartBody.Builder is the
+            // 3.x multipart builder (the old MultipartBuilder wrapper is absent from
+            // this OkHttp variant).
+            MultipartBody.Builder multipart = new MultipartBody.Builder().setType(MultipartBody.FORM);
+            for (NameValuePair param : params)
             {
-                entity.addPart(param.getName(), new StringBody(param.getValue(), charset));
+                multipart.addFormDataPart(param.getName(), param.getValue());
             }
-
-            for (FormBodyPart formPart : formParts)
+            for (MultipartPart formPart : formParts)
             {
-                entity.addPart(formPart);
+                // getMediaType() is already an okhttp3.MediaType (or null); pass it
+                // straight into the binary part's RequestBody.
+                multipart.addFormDataPart(formPart.getName(), formPart.getFilename(),
+                        RequestBody.create(formPart.getMediaType(), formPart.getData()));
             }
-            httpPost.setEntity(entity);                                                
+            body = multipart.build();
         }
         else
         {
-            httpPost.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
-        }        
-        
-        return httpPost;
+            FormBody.Builder form = new FormBody.Builder();
+            for (NameValuePair param : params)
+            {
+                form.add(param.getName(), param.getValue());
+            }
+            body = form.build();
+        }
+
+        requestBuilder.post(body);
+        return requestBuilder.build();
     }
     
-    protected HttpResponse doInBackground(String... ignored) 
+    protected Response doInBackground(String... ignored) 
     {    
         try
         {
             post = makeHttpPost();
             
-            HttpClient client = app.getHttpClient();
-            return client.execute(post);            
+            OkHttpClient client = app.getHttpClient();
+            return client.newCall(post).execute();            
         }     
         catch (Throwable ex) 
         {
@@ -107,9 +120,9 @@ public class BaseHttpTask extends AsyncTask<String, Void, HttpResponse> {
                 {
                     // app.log("Retrying request");
                     post = makeHttpPost();
-                    HttpClient client = app.getHttpClient();
+                    OkHttpClient client = app.getHttpClient();
                     
-                    return client.execute(post);  
+                    return client.newCall(post).execute();  
                 }
             }
             catch (Throwable ex2)
@@ -121,7 +134,7 @@ public class BaseHttpTask extends AsyncTask<String, Void, HttpResponse> {
         return null;
     }    
            
-    protected String getErrorText(HttpResponse response)    
+    protected String getErrorText(Response response)    
             throws Exception
     {
         String contentType = getContentType(response);
@@ -140,24 +153,24 @@ public class BaseHttpTask extends AsyncTask<String, Void, HttpResponse> {
         
         if (error == null)
         {
-            error = "HTTP " + response.getStatusLine().getStatusCode();
+            error = "HTTP " + response.code();
         }
         return error;
     }
     
-    protected String getContentType(HttpResponse response)
+    protected String getContentType(Response response)
     {
-        Header contentTypeHeader = response.getFirstHeader("Content-Type");
-        return (contentTypeHeader != null) ? contentTypeHeader.getValue() : "";
+        String contentTypeHeader = response.header("Content-Type");
+        return (contentTypeHeader != null) ? contentTypeHeader : "";
     }
     
     @Override
-    protected void onPostExecute(HttpResponse response) {
+    protected void onPostExecute(Response response) {
         if (response != null)
         {                
             try
             {
-                int statusCode = response.getStatusLine().getStatusCode();                
+                int statusCode = response.code();
                 
                 if (statusCode == 200) 
                 {
@@ -175,17 +188,17 @@ public class BaseHttpTask extends AsyncTask<String, Void, HttpResponse> {
             }
             catch (Throwable ex)
             {
-                post.abort();
+                // OkHttp Request objects carry no abortable connection state;
+                // releasing is handled below via response.body().close().
                 handleResponseException(ex);
                 handleFailure();
             }
             
-            try
-            {
-                response.getEntity().consumeContent();
-            }
-            catch (IOException ex)
-            {
+            // OkHttp: releasing the body replaces the old Apache
+            // entity.consumeContent(). close() here does not throw a checked
+            // exception in this OkHttp variant, so no try/catch is required.
+            if (response.body() != null) {
+                response.body().close();
             }
         }
         else
@@ -195,11 +208,11 @@ public class BaseHttpTask extends AsyncTask<String, Void, HttpResponse> {
         }
     }
     
-    protected void handleResponse(HttpResponse response) throws Exception
+    protected void handleResponse(Response response) throws Exception
     {
     }
     
-    protected void handleErrorResponse(HttpResponse response) throws Exception
+    protected void handleErrorResponse(Response response) throws Exception
     {
     }        
     
