@@ -48,7 +48,7 @@ public final class MessagingObserver extends ContentObserver {
         {
             // check MMS inbox in an IntentService since it may be slow
             // and we only want to do one check at a time
-            app.startService(new Intent(app, CheckMessagingService.class));
+            CheckMessagingService.enqueueWork(app, new Intent(app, CheckMessagingService.class));
         }
     }
 }

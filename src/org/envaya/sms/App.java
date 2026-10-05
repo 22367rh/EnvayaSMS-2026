@@ -15,7 +15,6 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
@@ -30,6 +29,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 import okhttp3.OkHttpClient;
 import org.envaya.sms.receiver.OutgoingMessagePoller;
@@ -160,19 +163,31 @@ public final class App extends Application {
     
     private boolean connectivityError = false;
     
+    /**
+     * Central background executor for all network / async work.
+     *
+     * Replaces android.os.AsyncTask's internal thread pool, which was made obsolete
+     * in API 30. A cached pool lets independent forwards/polls run concurrently
+     * instead of serializing on a single worker; daemon threads never block process
+     * exit. Kept static and reassignable so tests can substitute a stub executor.
+     */
+    public static Executor httpExecutor = Executors.newCachedThreadPool(new ThreadFactory()
+    {
+        private final AtomicInteger counter = new AtomicInteger();
+
+        @Override
+        public Thread newThread(Runnable r)
+        {
+            Thread thread = new Thread(r, "envaya-http-" + counter.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        }
+    });
+
     @Override
     public void onCreate()
     {
         super.onCreate();
-        
-        // workaround for http://code.google.com/p/android/issues/detail?id=20915
-        try
-        {
-            Class.forName("android.os.AsyncTask");
-        }
-        catch (ClassNotFoundException ex)
-        {
-        }
         
         settings = PreferenceManager.getDefaultSharedPreferences(this);        
         messagingUtils = new MessagingUtils(this);
@@ -215,7 +230,7 @@ public final class App extends Application {
     {
         // startup/shutdown tasks may be slow, so offload them to a worker thread...
         // IntentService takes care of only running one request at a time        
-        startService(new Intent(this, EnabledChangedService.class));        
+        EnabledChangedService.enqueueWork(this, new Intent(this, EnabledChangedService.class));        
     }
     
     public PackageInfo getPackageInfo()
@@ -279,7 +294,7 @@ public final class App extends Application {
             new NameValuePair("status", App.DEVICE_STATUS_SEND_LIMIT_EXCEEDED)
         );        
         task.setRetryOnConnectivityError(true);
-        task.execute();
+        task.execute(App.httpExecutor);
         
         return null;
     }    
@@ -399,8 +414,8 @@ public final class App extends Application {
             String serverUrl = getServerUrl();
             if (serverUrl.length() > 0) {
                 log("Checking for messages");
-                pollActive = true;                
-                new PollerTask(this).execute();
+                pollActive = true;
+                new PollerTask(this).execute(App.httpExecutor);
             } else {
                 log("Can't check messages; server URL not set");
             }
@@ -959,7 +974,7 @@ public final class App extends Application {
         }
 
         if (!state.canCheck()
-            || (checkConnectivityTask != null && checkConnectivityTask.getStatus() != AsyncTask.Status.FINISHED))
+            || (checkConnectivityTask != null && checkConnectivityTask.isRunning()))
         {
             return;
         }
@@ -972,7 +987,7 @@ public final class App extends Application {
         log("Checking connectivity to "+hostName+"...");
         
         checkConnectivityTask = new CheckConnectivityTask(this, hostName, networkType);
-        checkConnectivityTask.execute();
+        checkConnectivityTask.execute(App.httpExecutor);
     }
     
     private int activeNetworkType = -1;
@@ -1041,7 +1056,7 @@ public final class App extends Application {
                 break;
             }
             
-            task.execute();
+            task.execute(App.httpExecutor);
         }
     }
     

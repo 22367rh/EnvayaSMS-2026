@@ -1,7 +1,7 @@
 package org.envaya.sms.service;
 
 import android.app.AlarmManager;
-import android.app.IntentService;
+import androidx.core.app.JobIntentService;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -10,13 +10,20 @@ import android.telephony.TelephonyManager;
 import org.envaya.sms.App;
 import org.envaya.sms.receiver.NudgeReceiver;
 
-public class EnabledChangedService extends IntentService {
+public class EnabledChangedService extends JobIntentService {
     
+    private static final int WORK_ID = 1;
+
+    public static void enqueueWork(Context context, Intent work)
+    {
+        JobIntentService.enqueueWork(context, EnabledChangedService.class, WORK_ID, work);
+    }
+
     private App app;
     
     public EnabledChangedService(String name)
     {
-        super(name);        
+        super();        
     }
     
     public EnabledChangedService()
@@ -33,7 +40,7 @@ public class EnabledChangedService extends IntentService {
     }      
     
     @Override
-    protected void onHandleIntent(Intent intent)
+    protected void onHandleWork(Intent intent)
     {  
         TelephonyManager telephony = (TelephonyManager)   
             getSystemService(Context.TELEPHONY_SERVICE);                  

@@ -59,6 +59,26 @@ On Android 13 these still *compile* (they're deprecated, not removed), but:
 
 ---
 
+## Implementation notes (as-built)
+
+Two details differed from the naive plan above and are worth recording:
+
+1. **`androidx.useAndroidX=true` is required.** `JobIntentService` lives in
+   `androidx.core:core`, an AndroidX artifact. The app's own code still targets only the
+   Android framework, but enabling AndroidX here is necessary so that dependency resolves.
+   (`gradle.properties` was updated accordingly.)
+2. **`JobIntentService.onHandleWork(Intent)`, not `onHandleIntent`.** Unlike the old
+   `IntentService`, androidx's `JobIntentService` declares an abstract
+   `protected void onHandleWork(Intent)` — overriding `onHandleIntent` does **not** run.
+   All four services were renamed from `onHandleIntent` to `onHandleWork`. The old
+   `String name` constructors (which called `super(name)`) were removed because
+   `JobIntentService` has no such constructor; the classes now rely on the implicit
+   public no-arg constructor that the system uses for reflection.
+3. **Convenience `execute()` overload.** `BaseHttpTask` exposes both `execute()` (delegates
+   to `App.httpExecutor`) and `execute(Executor)`, so existing call sites in
+   `AmqpConsumer`, `IncomingMessage`, `Outbox`, `DeviceStatusReceiver`, and the `LogView`
+   UI test all keep working unchanged.
+
 ## Dependencies / risks
 
 - Do this **after** Step 3 (transport swap) so the executor drives OkHttp requests.

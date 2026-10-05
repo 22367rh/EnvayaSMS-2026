@@ -1,11 +1,13 @@
 package org.envaya.sms.task;
 
-import android.os.AsyncTask;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Build;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Executor;
 import okhttp3.FormBody;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -25,8 +27,16 @@ import org.envaya.sms.XmlUtils;
  * request building produces an okhttp3.Request and the async result is an
  * okhttp3.Response. Response-processing callbacks, content-type dispatch and the
  * X-Request-Signature header are preserved unchanged in logic.
+ *
+ * Threading: this class no longer extends android.os.AsyncTask (obsolete in API 30).
+ * Call execute(Executor) to run doInBackground() on a background thread and then
+ * deliver the result to onPostExecute() on the main looper -- mirroring the old
+ * AsyncTask lifecycle exactly.
  */
-public class BaseHttpTask extends AsyncTask<String, Void, Response> {
+public abstract class BaseHttpTask {
+
+    // Delivers results back onto the UI/main thread, as AsyncTask did previously.
+    private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     
     protected App app;
     protected String url;    
@@ -36,6 +46,43 @@ public class BaseHttpTask extends AsyncTask<String, Void, Response> {
     protected boolean useMultipartPost = false;    
     protected Request post;
     protected Throwable requestException;
+
+    /**
+     * Run this task on the shared HTTP executor ({@link App#httpExecutor}).
+     * Convenience overload for callers that do not manage their own executor.
+     */
+    public void execute()
+    {
+        execute(App.httpExecutor);
+    }
+
+    /**
+     * Runs doInBackground() on the given background executor, then posts the result
+     * to onPostExecute() on the main thread. Always calls onPostExecute (even if
+     * doInBackground throws), matching the removed AsyncTask contract.
+     */
+    public void execute(final Executor executor) {
+        final BaseHttpTask self = this;
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                Response response;
+                try {
+                    response = doInBackground((String[]) null);
+                } catch (Throwable t) {
+                    // Should not happen -- doInBackground catches Throwable internally.
+                    response = null;
+                }
+                final Response result = response;
+                MAIN_HANDLER.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        self.onPostExecute(result);
+                    }
+                });
+            }
+        });
+    }
     
     public BaseHttpTask(App app, String url, NameValuePair... paramsArr)
     {
@@ -164,7 +211,6 @@ public class BaseHttpTask extends AsyncTask<String, Void, Response> {
         return (contentTypeHeader != null) ? contentTypeHeader : "";
     }
     
-    @Override
     protected void onPostExecute(Response response) {
         if (response != null)
         {                

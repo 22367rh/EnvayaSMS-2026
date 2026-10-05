@@ -77,7 +77,7 @@ public class AmqpConsumer {
     {
         Intent intent = new Intent(app, AmqpConsumerService.class);
         intent.putExtra("start", start);        
-        app.startService(intent);   
+        AmqpConsumerService.enqueueWork(app, intent);   
     }
         
     public void cancelStartDelayed()

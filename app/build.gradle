@@ -52,6 +52,11 @@ dependencies {
     // the platform in API 23) to OkHttp, so these temporary deps are gone.
     implementation 'com.squareup.okhttp3:okhttp:3.14.9'
 
+    // Stage 4: JobIntentService (drop-in replacement for the deprecated
+    // android.app.IntentService, obsolete in API 30). Pure-Java AAR, no
+    // Kotlin stdlib required; works on minSdk 21.
+    implementation 'androidx.core:core:1.13.1'
+
     implementation files('../libs/rabbitmq-client.jar')
     implementation files('../libs/commons-io-1.2.jar')
 }

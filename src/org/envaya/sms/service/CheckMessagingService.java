@@ -1,7 +1,8 @@
 
 package org.envaya.sms.service;
 
-import android.app.IntentService;
+import androidx.core.app.JobIntentService;
+import android.content.Context;
 import android.content.Intent;
 import org.envaya.sms.App;
 import org.envaya.sms.IncomingMms;
@@ -9,14 +10,21 @@ import org.envaya.sms.IncomingSms;
 import org.envaya.sms.MessagingUtils;
 import java.util.List;
 
-public class CheckMessagingService extends IntentService
+public class CheckMessagingService extends JobIntentService
 {
+    private static final int WORK_ID = 2;
+
+    public static void enqueueWork(Context context, Intent work)
+    {
+        JobIntentService.enqueueWork(context, CheckMessagingService.class, WORK_ID, work);
+    }
+
     private App app;
     private MessagingUtils messagingUtils;
 
     public CheckMessagingService(String name)
     {
-        super(name);        
+        super();        
     }
     
     public CheckMessagingService()
@@ -34,7 +42,7 @@ public class CheckMessagingService extends IntentService
     }        
 
     @Override
-    protected void onHandleIntent(Intent intent)
+    protected void onHandleWork(Intent intent)
     {            
         checkNewSentSms();
         
