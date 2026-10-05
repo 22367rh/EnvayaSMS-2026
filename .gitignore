@@ -4,3 +4,11 @@ nbandroid
 private
 local.properties
 site/*
+cmdline-tools/*
+
+# Gradle / Android build outputs
+.gradle/
+**/build/
+build/
+*.apk
+*.aab

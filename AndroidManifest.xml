@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-      package="org.envaya.sms"
       android:versionCode="30"
       android:versionName="3.0.1">
          
-    <uses-sdk android:minSdkVersion="4" />
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
          
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />              
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />              
@@ -23,7 +22,7 @@
 
     <application android:name="org.envaya.sms.App"
         android:icon="@drawable/icon" android:label="@string/app_name">
-        <activity android:name="org.envaya.sms.ui.Main" android:label="@string/app_name" android:noHistory="true">
+        <activity android:name="org.envaya.sms.ui.Main" android:exported="true" android:label="@string/app_name" android:noHistory="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -60,13 +59,13 @@
         <activity android:name="org.envaya.sms.ui.ExpansionPacks" android:label="...">
         </activity>        
 
-        <receiver android:name="org.envaya.sms.receiver.SmsReceiver">
+        <receiver android:name="org.envaya.sms.receiver.SmsReceiver" android:exported="true">
             <intent-filter android:priority="101">
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>
         </receiver> 	
         
-        <receiver android:name="org.envaya.sms.receiver.OutgoingSmsReceiver">
+        <receiver android:name="org.envaya.sms.receiver.OutgoingSmsReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="org.envaya.sms.OUTGOING_SMS" />
                 <data android:scheme="content" />
@@ -119,7 +118,7 @@
         <receiver android:name="org.envaya.sms.receiver.StartAmqpConsumer">
         </receiver>
         
-        <receiver android:name="org.envaya.sms.receiver.ExpansionPackInstallReceiver">
+        <receiver android:name="org.envaya.sms.receiver.ExpansionPackInstallReceiver" android:exported="true">
             <intent-filter> 
                  <action android:name="android.intent.action.PACKAGE_ADDED" /> 
                  <action android:name="android.intent.action.PACKAGE_REMOVED" /> 
@@ -128,13 +127,13 @@
             </intent-filter>            
         </receiver>        
         
-        <receiver android:name="org.envaya.sms.receiver.ConnectivityChangeReceiver" >        
+        <receiver android:name="org.envaya.sms.receiver.ConnectivityChangeReceiver" android:exported="true">        
             <intent-filter> 
                 <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
             </intent-filter> 
         </receiver>         
         
-        <receiver android:name="org.envaya.sms.receiver.DeviceStatusReceiver"> 
+        <receiver android:name="org.envaya.sms.receiver.DeviceStatusReceiver" android:exported="true"> 
             <intent-filter>
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
                 <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />

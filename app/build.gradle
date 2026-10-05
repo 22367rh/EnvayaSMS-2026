@@ -1,0 +1,56 @@
+// Single Android application module for EnvayaSMS.
+// Source files are kept in place at the repo root; only these sourceSets point up one level.
+plugins {
+    id 'com.android.application' version '8.5.2'
+}
+
+android {
+    namespace = 'org.envaya.sms'
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "org.envaya.sms"
+        minSdk = 21
+        targetSdk = 34
+        versionCode = 30
+        versionName = "3.0.1"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile '../AndroidManifest.xml'
+            java.srcDirs = ['../src']
+            res.srcDirs = ['../res']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+        }
+    }
+
+    lint {
+        abortOnError = false
+    }
+}
+
+dependencies {
+    // ------------------------------------------------------------------
+    // TEMPORARY (Stage 1): keep the current code compiling as-is.
+    //   * org.apache.http.* is provided by httpclient + httpmime until
+    //     Step 3 migrates the HTTP layer to OkHttp, then these are removed.
+    //   * rabbitmq-client.jar / commons-io jars are carried over from libs/
+    //     and replaced with Maven dependencies in later steps (Steps 3 & 9).
+    // ------------------------------------------------------------------
+    implementation 'org.apache.httpcomponents:httpclient:4.1.2'
+    implementation 'org.apache.httpcomponents:httpmime:4.1.2'
+
+    implementation files('../libs/rabbitmq-client.jar')
+    implementation files('../libs/commons-io-1.2.jar')
+}

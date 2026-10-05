@@ -327,29 +327,28 @@ public class LogView extends Activity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle item selection
-        switch (item.getItemId()) {
-        case R.id.settings:
+        int itemId = item.getItemId();
+        if (itemId == R.id.settings) {
             startActivity(new Intent(this, Prefs.class));
             return true;
-        case R.id.check_now:              
+        } else if (itemId == R.id.check_now) {
             app.checkOutgoingMessages();
             return true;
-        case R.id.retry_now:                            
+        } else if (itemId == R.id.retry_now) {
             app.retryStuckMessages();
-            return true; 
-        case R.id.forward_saved:
+            return true;
+        } else if (itemId == R.id.forward_saved) {
             startActivity(new Intent(this, MessagingSmsInbox.class));
             return true;
-        case R.id.pending:
+        } else if (itemId == R.id.pending) {
             startActivity(new Intent(this, PendingMessages.class));
             return true;
-        case R.id.test:            
+        } else if (itemId == R.id.test) {
             app.log("Testing server connection...");
             new TestTask().execute();
             return true;
-        default:
-            return super.onOptionsItemSelected(item);
         }
+        return super.onOptionsItemSelected(item);
     }        
     
     // first time the Menu key is pressed

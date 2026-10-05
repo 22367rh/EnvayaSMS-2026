@@ -156,15 +156,20 @@ public class ForegroundService extends Service {
         if (app.isEnabled())           
         {
             CharSequence text = getText(R.string.service_started);
-            
-            Notification notification = new Notification(R.drawable.icon, text,
-                    System.currentTimeMillis());
 
             PendingIntent contentIntent = PendingIntent.getActivity(this, 0,
-                    new Intent(this, Main.class), 0);
+                    new Intent(this, Main.class), PendingIntent.FLAG_IMMUTABLE);
 
-            CharSequence info = getText(R.string.running);
-            notification.setLatestEventInfo(this, info, text, contentIntent);
+            // Notification assembled via Notification.Builder: the old
+            // Notification(int,CharSequence,long) constructor and
+            // setLatestEventInfo(...) were removed in API 31.
+            Notification notification = new Notification.Builder(this)
+                    .setContentTitle(getText(R.string.running))
+                    .setContentText(text)
+                    .setSmallIcon(R.drawable.icon)
+                    .setWhen(System.currentTimeMillis())
+                    .setContentIntent(contentIntent)
+                    .build();
 
             startForegroundCompat(R.string.service_started, notification);            
         }

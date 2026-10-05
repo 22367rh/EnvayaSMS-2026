@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "EnvayaSMS"
+
+// The single Android application module lives in ./app. Source files stay physically
+// at the repo root (src/, res/, AndroidManifest.xml); only Gradle sourceSets point up.
+include ':app'
