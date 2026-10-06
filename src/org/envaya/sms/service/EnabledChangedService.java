@@ -50,7 +50,7 @@ public class EnabledChangedService extends JobIntentService {
         app.setOutgoingMessageAlarm();
 
         AlarmManager alarmManager = (AlarmManager) app.getSystemService(Context.ALARM_SERVICE);
-        alarmManager.cancel(PendingIntent.getBroadcast(app, 0, new Intent(app, NudgeReceiver.class), 0));
+        alarmManager.cancel(PendingIntent.getBroadcast(app, 0, new Intent(app, NudgeReceiver.class), PendingIntent.FLAG_IMMUTABLE));
         
         if (app.isEnabled())
         {

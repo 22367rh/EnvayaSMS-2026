@@ -260,7 +260,7 @@ public class Outbox {
                 PendingIntent pendingIntent = PendingIntent.getBroadcast(app,
                     0,
                     intent,
-                    0);
+                    PendingIntent.FLAG_IMMUTABLE);
 
                 alarm.set(
                     AlarmManager.RTC_WAKEUP,

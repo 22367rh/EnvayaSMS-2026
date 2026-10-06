@@ -139,7 +139,7 @@ public class CheckConnectivityTask {
                 PendingIntent pendingIntent = PendingIntent.getBroadcast(app,
                     0,
                     new Intent(app, ReenableWifiReceiver.class),
-                    0);
+                    PendingIntent.FLAG_IMMUTABLE);
 
                 // set an alarm to try restoring Wi-Fi in a little while
                 AlarmManager alarm =

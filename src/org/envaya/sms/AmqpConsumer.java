@@ -90,7 +90,7 @@ public class AmqpConsumer {
         return PendingIntent.getBroadcast(app,
                 0,
                 new Intent(app, StartAmqpConsumer.class),
-                0);
+                PendingIntent.FLAG_IMMUTABLE);
     }
     
     public void startDelayed(long delay)
@@ -158,7 +158,7 @@ public class AmqpConsumer {
         return PendingIntent.getService(app,
             0,
             new Intent(app, AmqpHeartbeatService.class),
-            0);
+            PendingIntent.FLAG_IMMUTABLE);
     }                    
     
     public class HeartbeatExecutor extends ScheduledThreadPoolExecutor

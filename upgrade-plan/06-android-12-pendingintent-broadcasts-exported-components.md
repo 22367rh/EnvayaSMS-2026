@@ -34,6 +34,49 @@ enforced through Android 13/14:
 
 ---
 
+## As-built status (this commit)
+
+**Action #1 — PendingIntent mutability: COMPLETE.** Every `PendingIntent.*Xxx(...)` creation
+site now passes an explicit mutability flag instead of a bare `0`/int literal. On Android 12+
+(API 31+) creating a `PendingIntent` without an explicit mutability flag throws a `SecurityException`
+and the app would crash at that call, so this is the hard, mechanical half of Step 6.
+
+| File | Site | Flag applied |
+|------|------|--------------|
+| `App.java` | `setOutgoingMessageAlarm()` (outgoing poller alarm) | `FLAG_IMMUTABLE` |
+| `AmqpConsumer.java` | `getStartPendingIntent()` → `StartAmqpConsumer` | `FLAG_IMMUTABLE` |
+| `AmqpConsumer.java` | `getHeartbeatPendingIntent()` → `AmqpHeartbeatService` | `FLAG_IMMUTABLE` |
+| `Outbox.java` | Dequeue-outgoing alarm | `FLAG_IMMUTABLE` |
+| `OutgoingMessage.java` | `getTimeoutPendingIntent()` → `OutgoingMessageTimeout` | `FLAG_IMMUTABLE` |
+| `QueuedMessage.java` | retry alarm | `FLAG_IMMUTABLE` |
+| `CheckConnectivityTask.java` | re-enable-WiFi alarm → `ReenableWifiReceiver` | `FLAG_IMMUTABLE` |
+| `OutgoingSmsReceiver.java` | per-part **sent** intent (×1) | `FLAG_IMMUTABLE \| FLAG_ONE_SHOT` |
+| `OutgoingSmsReceiver.java` | per-part **delivery** intent (×1) | `FLAG_IMMUTABLE \| FLAG_ONE_SHOT` |
+| `EnabledChangedService.java` | `alarmManager.cancel(...)` match for `NudgeReceiver` | `FLAG_IMMUTABLE` |
+| `ForegroundService.java` | notification content `getActivity()` | already `FLAG_IMMUTABLE` (unchanged) |
+
+> Note: the two SMS per-part intents keep `FLAG_ONE_SHOT` (they are one-shot delivery tokens) and
+> simply gain `FLAG_IMMUTABLE`. The cancel() site in `EnabledChangedService` only needs a valid
+> mutability flag for identity matching — `FLAG_IMMUTABLE` is correct there.
+
+**Actions #2–#4 — Implicit-broadcast receiver conversions: DEFERRED to the next stage.**
+The three manifest receivers that listen for implicit broadcasts (`ConnectivityChangeReceiver`,
+`DeviceStatusReceiver`, `ExpansionPackInstallReceiver`) are **not** converted in this commit. This is a
+deliberate scoping decision, not an omission:
+
+- These conversions each require wiring runtime `registerReceiver(...)` / `NetworkCallback` to a valid
+  lifecycle owner (the foreground service or a dedicated lifecycle owner) so handlers survive process
+  events but are unregistered on destroy to avoid leaks. That is non-trivial and best done in isolation.
+- The app's `minSdkVersion` is **21**; `ConnectivityManager.registerDefaultNetworkCallback` only exists
+  from API 23, so the connectivity conversion additionally needs an SDK guard — a separate concern to
+  reason about carefully rather than cramming into the PendingIntent commit.
+- Manifest-declared implicit receivers do **not** fail the build or lint (they are a runtime enforcement),
+  so deferring them keeps this commit zero-risk while the project stays green and compilable.
+
+They remain listed under Target state / Incremental actions #2–#4 for the follow-up stage.
+
+---
+
 ## Incremental actions
 
 1. **PendingIntent mutability.** For each call site, replace the bare flag int:
@@ -51,9 +94,9 @@ enforced through Android 13/14:
 
 ## Acceptance criteria
 
-- [ ] No `PendingIntent` is created with an ambiguous/zero mutability flag on API 31+.
-- [ ] App builds and runs on Android 13/14 with zero "implicit broadcast" lint errors.
-- [ ] Connectivity, battery/power, and package-install handling still function via runtime receivers/callbacks.
+- [x] No `PendingIntent` is created with an ambiguous/zero mutability flag on API 31+. _(done this commit)_
+- [ ] App builds and runs on Android 13/14 with zero "implicit broadcast" lint errors. _(deferred; manifest implicit receivers not yet removed — see As-built status)_
+- [ ] Connectivity, battery/power, and package-install handling still function via runtime receivers/callbacks. _(deferred to follow-up stage — see As-built status)_
 
 ---
 

@@ -433,7 +433,7 @@ public final class App extends Application {
         PendingIntent pendingIntent = PendingIntent.getBroadcast(this,
                 0,
                 new Intent(this, OutgoingMessagePoller.class),
-                0);
+                PendingIntent.FLAG_IMMUTABLE);
 
         alarm.cancel(pendingIntent);
 

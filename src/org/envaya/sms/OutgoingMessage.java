@@ -178,7 +178,7 @@ public abstract class OutgoingMessage extends QueuedMessage {
         return PendingIntent.getBroadcast(app,
             0,
             timeout,
-            0);
+            PendingIntent.FLAG_IMMUTABLE);
     }
     
     public void setSendTimeout()

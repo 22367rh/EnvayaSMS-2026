@@ -40,7 +40,7 @@ public class OutgoingSmsReceiver extends BroadcastReceiver {
                 context,
                 0,
                 statusIntent,
-                PendingIntent.FLAG_ONE_SHOT));
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_ONE_SHOT));
 
             if (deliveryReport)
             {
@@ -52,7 +52,7 @@ public class OutgoingSmsReceiver extends BroadcastReceiver {
                     context,
                     0,
                     deliveryIntent,
-                    PendingIntent.FLAG_ONE_SHOT));                   
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_ONE_SHOT));                   
             }
         }        
 
