@@ -18,11 +18,12 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <!-- API 33+ : grant at runtime before posting notifications. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- API 28+ : required to run a foreground service (ForegroundService). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Required by the foreground-service-type system for FOREGROUND_SERVICE_DATA_SYNC. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application android:name="org.envaya.sms.App"
         android:icon="@drawable/icon" android:label="@string/app_name">
@@ -152,7 +153,11 @@
         <service android:exported="false" android:name="org.envaya.sms.service.EnabledChangedService">
         </service>
 
-        <service android:exported="false" android:name="org.envaya.sms.service.ForegroundService">
+        <!-- Runs in the foreground to keep the App process alive; declares its type so
+             startForeground() does not throw on API 31+. -->
+        <service android:exported="false"
+                android:name="org.envaya.sms.service.ForegroundService"
+                android:foregroundServiceType="dataSync">
         </service>            
         
         <service android:exported="false" android:name="org.envaya.sms.service.AmqpConsumerService">

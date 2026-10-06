@@ -22,8 +22,10 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
+import android.os.Build;
 import android.util.Log;
 import org.envaya.sms.App;
+import org.envaya.sms.PermissionHelper;
 import org.envaya.sms.R;
 
 import java.lang.reflect.InvocationTargetException;
@@ -157,19 +159,32 @@ public class ForegroundService extends Service {
         {
             CharSequence text = getText(R.string.service_started);
 
-            PendingIntent contentIntent = PendingIntent.getActivity(this, 0,
-                    new Intent(this, Main.class), PendingIntent.FLAG_IMMUTABLE);
+            // API 33+: POST_NOTIFICATIONS must be granted before the notification is shown.
+            // Until then we still call startForeground() (required to keep the process alive)
+            // but with a minimal, content-free notification so nothing leaks to the user.
+            boolean showFullNotification = Build.VERSION.SDK_INT < 33
+                    || PermissionHelper.hasPermission(this, PermissionHelper.POST_NOTIFICATIONS);
+
+            Notification.Builder builder = new Notification.Builder(this)
+                    .setSmallIcon(R.drawable.icon)
+                    .setWhen(System.currentTimeMillis());
+
+            if (showFullNotification) {
+                PendingIntent contentIntent = PendingIntent.getActivity(this, 0,
+                        new Intent(this, Main.class), PendingIntent.FLAG_IMMUTABLE);
+                builder.setContentTitle(getText(R.string.running))
+                        .setContentText(text)
+                        .setContentIntent(contentIntent);
+            } else {
+                // POST_NOTIFICATIONS not granted yet: still satisfy startForeground() with a
+                // minimal placeholder so the process stays alive without leaking content.
+                builder.setContentTitle(getText(R.string.running));
+            }
 
             // Notification assembled via Notification.Builder: the old
             // Notification(int,CharSequence,long) constructor and
             // setLatestEventInfo(...) were removed in API 31.
-            Notification notification = new Notification.Builder(this)
-                    .setContentTitle(getText(R.string.running))
-                    .setContentText(text)
-                    .setSmallIcon(R.drawable.icon)
-                    .setWhen(System.currentTimeMillis())
-                    .setContentIntent(contentIntent)
-                    .build();
+            Notification notification = builder.build();
 
             startForegroundCompat(R.string.service_started, notification);            
         }

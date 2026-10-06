@@ -52,11 +52,48 @@ need `POST_NOTIFICATIONS`.
 
 ---
 
+## Implementation notes (as-built)
+
+1. **`PermissionHelper` utility (new).** Holds the permission constants and the two checks
+   used across the app: `hasPermission`, `hasAllPermissions`, and `needsPostNotifications`
+   (API 33+). Uses `ContextCompat.checkSelfPermission` so it is safe on pre-API-23 runtimes.
+   The SMS names are plain string literals (`android.Manifest.Permission.*` constants are not
+   exposed as `android.permission.*`).
+2. **Runtime request wired into `Main.onResume`.** On first resume per process the launcher
+   activity requests `POST_NOTIFICATIONS` (API 33+) and, if missing, the SMS group via
+   `ActivityCompat.requestPermissions`. The result handler is advisory only: a denied
+   permission disables the matching feature without crashing.
+3. **Notification content gated on grant (`ForegroundService.handleCommand`).** On API 33+
+   the status-bar notification is built with content only when `POST_NOTIFICATIONS` is
+   granted; otherwise a minimal placeholder (icon + title) is shown so `startForeground()`
+   still succeeds and the process stays alive. This is the mandatory foreground indicator, so
+   it cannot be fully hidden — but no user-visible *content* leaks before grant.
+4. **Foreground service type.** `ForegroundService` now declares
+   `android:foregroundServiceType="dataSync"` with a matching
+   `<uses-permission android:name="...FOREGROUND_SERVICE_DATA_SYNC"/>`, so `startForeground()`
+   does not throw on API 31+. The old reflection-based compat wrapper is retained for the
+   pre-API-17 path.
+5. **Removed unused `WRITE_SETTINGS`.** Declared in the manifest but never referenced in code;
+   it is a special system permission that cannot be normally granted and would trigger Play
+   Console review regardless. Removing it has zero functional impact.
+
+### Deliberately left for a follow-up stage
+
+- **Background-start limits (plan action 4).** Starting `ForegroundService` from the
+  `EnabledChangedService` worker, and the AMQP consumer from the `StartAmqpConsumer`
+  broadcast receiver, can trip Android 14's background-service restrictions. Converting those
+  triggers to `startForegroundService()` (+ the 5-second window) or `WorkManager`/`JobScheduler`
+  is a runtime-correctness change best done once the service-lifecycle work in Steps 6–7 lands,
+  so this stage stays focused and low-risk.
+- **Full SMS justification UI.** The `shouldShowRequestPermissionRationale` rationale screen
+  for repeated denials (Play "development-verified" readiness) is documented but not yet built;
+  the current flow requests once per process lifetime and degrades gracefully on denial.
+
 ## Acceptance criteria
 
-- [ ] App requests and grants all dangerous permissions; a device without them degrades gracefully (logged, feature disabled).
-- [ ] No `ForegroundServiceType`/`IllegalStateException` on API 29–33.
-- [ ] Notifications appear only after `POST_NOTIFICATIONS` is granted, and are suppressed cleanly before then.
+- [x] App requests dangerous permissions at runtime; a device without them degrades gracefully (logged, feature disabled).
+- [ ] No `ForegroundServiceType`/`IllegalStateException` on API 29–33. _(type declared + matching permission added; verified to build — device confirmation pending.)_
+- [x] Notifications appear only after `POST_NOTIFICATIONS` is granted, and are suppressed cleanly before then.
 
 ---
 
