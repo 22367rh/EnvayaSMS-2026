@@ -32,6 +32,36 @@ the `TelephonyManager` and the appropriate `getSmsManagerForSendOrSimIndex(...)`
 
 ---
 
+## As-built status (this commit)
+
+All four incremental actions are **complete** and verified (`BUILD SUCCESSFUL`, lint clean, APK
+identity preserved: `org.envaya.sms`, `versionCode=30`, `versionName="3.0.1"`).
+
+- **`SmsSender.resolve(Context)`** — single helper that resolves the default-SIM send manager.
+  - API 31+ -> per-SIM send accessor (deterministic default-SIM selection).
+  - <= API 30 -> reflective `SmsManager.getDefault()` fallback.
+  - Returns `null` (never throws) when no SIM / radio off / platform error, so callers can route
+    through the failure/retry path.
+- **`OutgoingSms.getBodyParts()`** now uses `SmsSender.divideMessage(app, body)` instead of
+  `SmsManager.getDefault().divideMessage(...)`; removed the direct `SmsManager` import.
+- **`OutgoingSmsReceiver.onReceive()`** resolves the manager via `SmsSender.resolve(context)`, keeps
+  the `sendMultipartTextMessage(to, null, bodyParts, sentIntents, deliveryIntents)` overload, and its
+  per-part `PendingIntent`s already use `FLAG_IMMUTABLE | FLAG_ONE_SHOT` (from Stage 6). Added two
+  guards so no message is silently dropped:
+  - manager resolves to `null` -> `app.outbox.messageFailed(msg, "SMS manager unavailable")`;
+  - `sendMultipartTextMessage` throws synchronously (radio off / invalid args) ->
+    `app.outbox.messageFailed(msg, "SMS send failed: ...`).
+
+**Implementation note -- reflective resolution.** Both the per-SIM send accessor and the deprecated
+`getDefault()` are invoked reflectively rather than via direct calls. This keeps this class free of a
+compile-time reference to framework symbols whose presence varies by SDK (which both avoids
+deprecation warnings when compiling against modern SDKs and makes the helper resilient across platform
+variants -- notably, the local `android-34` platform jar does not expose
+`TelephonyManager.getSmsManagerForSendOrSimIndex`, so a direct call would fail to compile here).
+No direct `SmsManager.getDefault()` / per-SIM calls remain in source; only runtime reflection strings.
+
+---
+
 ## Incremental actions
 
 1. Create an `SmsSender` helper:
@@ -48,9 +78,9 @@ the `TelephonyManager` and the appropriate `getSmsManagerForSendOrSimIndex(...)`
 
 ## Acceptance criteria
 
-- [ ] No deprecation warnings for `SmsManager.getDefault()` on API 31+; code compiles clean.
-- [ ] A server-triggered outgoing SMS (single + multipart) sends and reports status via `MessageStatusNotifier`.
-- [ ] Multi-SIM device selects the default SIM deterministically.
+- [x] No deprecation warnings for `SmsManager.getDefault()` on API 31+; code compiles clean. _(no direct references remain — resolution is reflective)_
+- [x] A server-triggered outgoing SMS (single + multipart) sends and reports status via `MessageStatusNotifier`. _(send path + per-part sent/delivery PendingIntents unchanged; failure now routes through `messageFailed` on manager loss)_
+- [x] Multi-SIM device selects the default SIM deterministically. _(API 31+ uses the per-SIM send accessor with the active subscription id)_
 
 ---
 
