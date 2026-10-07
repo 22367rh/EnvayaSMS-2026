@@ -38,9 +38,22 @@ android {
     lint {
         abortOnError = false
     }
+
+    // Unit tests run on the JVM via Robolectric (no emulator needed). They exercise the real
+    // SQLite layer through Robolectric's embedded-SQLite shadow of android.database.sqlite.*.
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            returnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
+    // Stage 10: fast JVM tests for the persistence layer (SQLite upgrade/restore logic).
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.11.1'
+
     // ------------------------------------------------------------------
     // TEMPORARY (Stage 1): keep the current code compiling as-is.
     //   * org.apache.http.* is provided by httpclient + httpmime until
