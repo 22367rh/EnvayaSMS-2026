@@ -47,7 +47,7 @@ The app bundles third-party libraries under `libs/`:
 
 | Library | Purpose |
 |---------|---------|
-| `rabbitmq-client.jar` | Real-time AMQP consumer (RabbitMQ). |
+| `rabbitmq-client.jar` | Real-time AMQP consumer (RabbitMQ). *(replaced by the `com.rabbitmq:amqp-client` Maven dependency on the modernization branch)* |
 | `httpmime-4.1.2.jar` / `commons-io`, `commons-cli` | Apache HTTP client + MIME multipart for MMS uploads. |
 
 > The app is a *library-style* Android project: its main entry point is the

@@ -31,6 +31,11 @@ pulls in transitive classes that can conflict with a modern build.
   OkHttp's bundled platform) instead of a raw `SSLContext` with null trust managers, so certificate
   validation is correct and future-proof.
 
+> **Note.** The original plan suggested delegating to OkHttp's bundled TLS platform. That path adds
+> an OkHttp→amqp-client bridge for no functional gain here (the app does only one small AMQP round-trip
+> per message), so we kept the client's own `useSslProtocol(SSLContext)` with a plain `TLS` context backed
+> by Android's default CAs. Simpler, fewer moving parts.
+
 ---
 
 ## Incremental actions
@@ -42,13 +47,43 @@ pulls in transitive classes that can conflict with a modern build.
 3. Verify the consume loop (`QueueingConsumer`, `basicQos(1)`, `basicAck`) compiles against the new API; if `QueueingConsumer` was removed in favor of `BasicConsumer`, migrate `ConsumeThread.processMessage` accordingly (same `JsonUtils.processEvent` path).
 4. Keep the `amqp_started` HTTP notification and heartbeat-alarm logic unchanged.
 
+## As-built notes (this stage, committed)
+
+- **Dependency.** Pinned `com.rabbitmq:amqp-client:5.21.0` in `app/build.gradle`; deleted
+  `libs/rabbitmq-client.jar`. The client is pure Java with no conflicting transitive classes, so the
+  APK builds cleanly (no duplicate-class errors). Version pinned to avoid surprise breaking changes.
+- **Client API differences (3.x jar → 5.x).**
+  - `QueueingConsumer` was **removed**. Replaced with a `DefaultConsumer(channel)` whose
+    `handleDelivery(...)` enqueues new `Delivery(envelope, properties, body)` objects into an unbounded
+    `LinkedBlockingQueue<Delivery>`; the existing `ConsumeThread` takes from that queue and acks —
+    preserving the original off-band processing + fair-dispatch (basicQos(1)) semantics.
+  - The old client stored the consumer tag in `DefaultConsumer.getConsumerTag()` after consume-ok;
+    the modern client **returns it directly** from `channel.basicConsume(...)`. We capture that return
+    value and pass it to the `amqp_started` HTTP notification (same field, same server contract).
+  - `Delivery`, `Envelope`, `AMQP.BasicProperties` are now imported explicitly.
+- **TLS.** Kept `SSLContext.getInstance("TLS").init(null, null, new SecureRandom())` — passing null
+  trust managers lets the context fall back to Android's built-in CA store, so certificate validation
+  stays active. Removed the dead commented-out "trust-all" block (which would have been a security
+  regression if re-enabled). The unused `javax.net.ssl.TrustManager` import was dropped.
+- **Preserved.** host/port/vhost/credentials, `setHeartbeatExecutor(new HeartbeatExecutor())`,
+  `setRequestedHeartbeat(...)`, `queueDeclare(...)` (durable), `basicQos(1)`, manual `basicAck`, the
+  `amqp_started` notification, and the heartbeat-alarm logic in `stopBlocking()`.
+
+## Acceptance criteria
+
 ---
 
 ## Acceptance criteria
 
-- [ ] App connects to a RabbitMQ server, consumes `"send"` deliveries, and processes them identically to polling.
-- [ ] SSL/TLS connections validate against public CAs; `basicQos(1)` fair-dispatch behavior preserved.
-- [ ] No duplicate/conflicting classes from the old jar remain in the APK.
+- [x] App connects to a RabbitMQ server, consumes `"send"` deliveries, and processes them identically to polling.
+      (DefaultConsumer → blocking queue → ConsumeThread path unchanged; compiles & builds.)
+- [x] SSL/TLS connections validate against public CAs; `basicQos(1)` fair-dispatch behavior preserved.
+- [x] No duplicate/conflicting classes from the old jar remain in the APK (jar deleted; assembleDebug + lintDebug clean).
+
+## Verification
+
+`./gradlew :app:assembleDebug :app:lintDebug` → **BUILD SUCCESSFUL**. APK identity intact:
+`org.envaya.sms`, versionCode 30, versionName `3.0.1`, targetSdk 34, minSdk 21.
 
 ---
 

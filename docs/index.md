@@ -11,6 +11,7 @@ The project is a classic *Android* library-style application built with **Ant**
 (`build.xml`) targeting very old Android SDKs (`minSdkVersion = 4`, version name
 `3.0.1`). It uses Apache HttpClient (the `org.apache.http` stack) and, for the
 real-time transport, the RabbitMQ Java client (`libs/rabbitmq-client.jar`).
+  (On the modernization branch this is a Maven dependency — `com.rabbitmq:amqp-client` — and the jar was removed.)
 
 > **This document** is an auto-generated architectural tour of the code as it
 > exists in this repository. It is organized so you can read top-down

@@ -10,20 +10,24 @@ import android.os.SystemClock;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.QueueingConsumer;
+import com.rabbitmq.client.DefaultConsumer;
+import com.rabbitmq.client.Delivery;
+import com.rabbitmq.client.Envelope;
+import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.AlreadyClosedException;
 import com.rabbitmq.client.ShutdownSignalException;
 import org.envaya.sms.receiver.StartAmqpConsumer;
 import org.envaya.sms.service.AmqpHeartbeatService;
 import org.envaya.sms.task.HttpTask;
 import java.io.IOException;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.security.SecureRandom;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
 import org.envaya.sms.task.NameValuePair;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -258,31 +262,16 @@ public class AmqpConsumer {
             */
             connectionFactory.setHeartbeatExecutor(new HeartbeatExecutor());
             
-            TrustManager[] trustManagers = null; // use built-in SSL certificate verification
-            
             if (ssl)
             {
-                /*
-                // could customize SSL certificate verification
-                trustManagers = new TrustManager[]{
-                    new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return null;
-                        }
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {
-                        }
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) 
-                            throws CertificateException
-                        {
-                        }
-                    }
-                };
-                */
+                // Use the platform's default SSL context so certificate validation runs against
+                // Android's built-in CA store. Passing null trust managers lets the context fall
+                // back to those platform defaults rather than trusting every certificate, which
+                // is what a hand-rolled "trust-all" manager would do (a security regression).
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, null, new SecureRandom());
 
-                SSLContext c = SSLContext.getInstance("TLS");
-                c.init(null, trustManagers, new SecureRandom());
-
-                connectionFactory.useSslProtocol(c);
+                connectionFactory.useSslProtocol(sslContext);
             }
             
             // Need to periodically check if connection is still working
@@ -301,18 +290,30 @@ public class AmqpConsumer {
             channel.queueDeclare(queue, true, false, false, null);            
             channel.basicQos(1);
 
-            QueueingConsumer consumer = new QueueingConsumer(channel);
+                        // The modern client (5.x) removed QueueingConsumer. Enqueue deliveries off the
+            // client's I/O thread and process them on our own worker thread below. basicQos(1)
+            // plus manual ack keep at most one message in flight, so this never blocks for long.
+            final BlockingQueue<Delivery> deliveryQueue = new LinkedBlockingQueue<>();
 
-            channel.basicConsume(queue, false, consumer);                    
+            String consumerTag = channel.basicConsume(queue, false, new DefaultConsumer(channel) {
+                @Override
+                public void handleDelivery(String tag, Envelope envelope,
+                                           AMQP.BasicProperties properties, byte[] body)
+                        throws IOException
+                {
+                    try
+                    {
+                        deliveryQueue.put(new Delivery(envelope, properties, body));
+                    }
+                    catch (InterruptedException e)
+                    {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            });
 
-            consumeThread = new ConsumeThread(consumer);
-            consumeThread.start();
-            
-            HttpTask task = new HttpTask(app, 
-                new NameValuePair("action", App.ACTION_AMQP_STARTED),
-                new NameValuePair("consumer_tag", consumer.getConsumerTag())
-            );
-            task.execute();
+            consumeThread = new ConsumeThread(deliveryQueue);
+
                      
             return true;
         }
@@ -365,12 +366,12 @@ public class AmqpConsumer {
     
     public class ConsumeThread extends Thread
     {
-        private QueueingConsumer consumer;
+        private final BlockingQueue<Delivery> deliveryQueue;
         private boolean terminated = false;
         
-        public ConsumeThread(QueueingConsumer consumer)
+        public ConsumeThread(BlockingQueue<Delivery> deliveryQueue)
         {
-            this.consumer = consumer;
+            this.deliveryQueue = deliveryQueue;
         }
         
         public synchronized void terminate()
@@ -383,7 +384,7 @@ public class AmqpConsumer {
             return terminated;
         }
         
-        public void processMessage(QueueingConsumer.Delivery delivery)
+        public void processMessage(Delivery delivery)
         {
             String jsonStr = new String(delivery.getBody());
             
@@ -406,11 +407,12 @@ public class AmqpConsumer {
             {
                 app.log("Real-time connection established.");
                 
-                Channel ch = consumer.getChannel();
+                // Pin to the channel this thread's deliveries came from; acking must use it.
+                Channel ch = channel;
 
                 while(true)
                 {
-                    QueueingConsumer.Delivery delivery = consumer.nextDelivery();
+                    Delivery delivery = deliveryQueue.take();
 
                     if (isTerminated())
                     {

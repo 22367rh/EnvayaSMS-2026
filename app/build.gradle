@@ -45,9 +45,8 @@ dependencies {
     // TEMPORARY (Stage 1): keep the current code compiling as-is.
     //   * org.apache.http.* is provided by httpclient + httpmime until
     //     Step 3 migrates the HTTP layer to OkHttp, then these are removed.
-    //   * rabbitmq-client.jar / commons-io jars are carried over from libs/
-    //     and replaced with Maven dependencies in later steps (Steps 3 & 9).
-    // ------------------------------------------------------------------
+    //   * commons-io jar is carried over from libs/ and replaced by a Maven dependency
+    //     in a later step (Step 12). The rabbitmq-client.jar was replaced in Step 9.
     // Stage 3 migrated the HTTP layer off org.apache.http.* (removed from
     // the platform in API 23) to OkHttp, so these temporary deps are gone.
     implementation 'com.squareup.okhttp3:okhttp:3.14.9'
@@ -67,6 +66,9 @@ dependencies {
         exclude group: 'org.jetbrains.kotlin'
     }
 
-    implementation files('../libs/rabbitmq-client.jar')
+    // Stage 9: modern, maintained AMQP client (replaces the old bundled
+    // libs/rabbitmq-client.jar). Pinned to avoid surprise breaking changes.
+    implementation 'com.rabbitmq:amqp-client:5.21.0'
+
     implementation files('../libs/commons-io-1.2.jar')
 }
