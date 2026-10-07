@@ -12,15 +12,18 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
-import android.text.Html;
 import android.text.SpannableStringBuilder;
+import android.os.Build;
 import android.util.Log;
+import java.lang.reflect.Method;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -938,21 +941,14 @@ public final class App extends Application {
         ConnectivityManager cm = 
             (ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
 
-        NetworkInfo activeNetwork = cm.getActiveNetworkInfo();                
+        int networkType = getConnectedNetworkType(cm);
 
-        if (activeNetwork == null || !activeNetwork.isConnected())
+        if (networkType < 0)
         {
-            WifiManager wmgr = (WifiManager)getSystemService(Context.WIFI_SERVICE);            
+            WifiManager wmgr = (WifiManager)getSystemService(Context.WIFI_SERVICE);
 
-            if (activeNetwork != null)
-            {
-                log(activeNetwork.getTypeName() + "=" + activeNetwork.getState());
-            }
-            else
-            {
-                log("Not connected to any network.");   
-            }
-            
+            log("Not connected to any network.");
+
             if (!wmgr.isWifiEnabled() && isNetworkFailoverEnabled())
             {
                 log("Enabling WIFI...");
@@ -961,8 +957,7 @@ public final class App extends Application {
 
             return;
         }
-        
-        final int networkType = activeNetwork.getType();
+
         
         ConnectivityCheckState state = 
             connectivityCheckStates.get(networkType);
@@ -990,6 +985,70 @@ public final class App extends Application {
         checkConnectivityTask.execute(App.httpExecutor);
     }
     
+    /**
+     * Returns the network type (a ConnectivityManager.TYPE_* constant) of the active
+     * internet-capable network, or -1 if there is none. Uses the modern capabilities model on
+     * API 23+ and falls back to the (deprecated) getActiveNetworkInfo() reflectively on API
+     * 21-22 so this class carries no compile-time reference to a symbol that varies by platform.
+     * NetworkInfo's own methods (isConnected/getType) are not deprecated, so they are called
+     * normally once the manager is obtained.
+     */
+    private static int getConnectedNetworkType(ConnectivityManager cm) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network net = cm.getActiveNetwork();
+                if (net == null) {
+                    return -1;
+                }
+                NetworkCapabilities caps = cm.getNetworkCapabilities(net);
+                if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                    return -1;
+                }
+                // Network itself carries no type int; resolve it from the NetworkInfo.
+                NetworkInfo info = cm.getNetworkInfo(net);
+                return info != null ? info.getType() : -1;
+            }
+            // API 21-22: getActiveNetwork()/getNetworkCapabilities() are unavailable; the only
+            // framework option is the deprecated getActiveNetworkInfo(), invoked reflectively.
+            Method m = ConnectivityManager.class.getMethod("getActiveNetworkInfo");
+            NetworkInfo info = (NetworkInfo) m.invoke(cm);
+            if (info == null || !info.isConnected()) {
+                return -1;
+            }
+            return info.getType();
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Human-readable name for a connectivity network type (e.g. "Wi-Fi"). The platform's
+     * ConnectivityManager.getNetworkTypeName(int) is only available from API 31, so resolve it
+     * reflectively on newer versions and fall back to a small local mapping below on older ones.
+     */
+    private static String networkTypeName(int type) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                java.lang.reflect.Method m = ConnectivityManager.class.getMethod("getNetworkTypeName", int.class);
+                return (String) m.invoke(null, type);
+            }
+        } catch (Exception e) {
+            // fall through to the local mapping below
+        }
+        switch (type) {
+            case ConnectivityManager.TYPE_WIFI:
+                return "Wi-Fi";
+            case ConnectivityManager.TYPE_MOBILE:
+                return "Mobile";
+            case ConnectivityManager.TYPE_WIMAX:
+                return "WiMax";
+            case ConnectivityManager.TYPE_BLUETOOTH:
+                return "Bluetooth";
+            default:
+                return String.valueOf(type);
+        }
+    }
+
     private int activeNetworkType = -1;
     
     public synchronized void onConnectivityChanged()
@@ -997,18 +1056,17 @@ public final class App extends Application {
         ConnectivityManager cm = 
             (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
         
-        NetworkInfo networkInfo = cm.getActiveNetworkInfo();
-        
-        if (networkInfo == null || !networkInfo.isConnected())
+        int networkType = getConnectedNetworkType(cm);
+
+        if (networkType < 0)
         {
             amqpConsumer.stopAsync();
-            
+
             return;
         }
 
         amqpConsumer.startDelayed(5000);
-        
-        int networkType = networkInfo.getType();
+
         
         if (networkType == activeNetworkType)
         {
@@ -1016,7 +1074,7 @@ public final class App extends Application {
         }        
         
         activeNetworkType = networkType;        
-        log("Connected to " + networkInfo.getTypeName());        
+        log("Connected to " + networkTypeName(networkType));        
         asyncCheckConnectivity();
     }
     

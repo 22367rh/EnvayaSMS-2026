@@ -57,6 +57,16 @@ dependencies {
     // Kotlin stdlib required; works on minSdk 21.
     implementation 'androidx.core:core:1.13.1'
 
+    // Stage 8: PreferenceFragmentCompat (drop-in replacement for the deprecated
+    // android.preference.PreferenceActivity). Brings in androidx.appcompat transitively,
+    // which Prefs now extends so it can host the preference fragment.
+    // Exclude preference's transitive Kotlin stdlib: this project is pure Java and already
+    // carries a compatible kotlin-stdlib (1.8.22); preference's older 1.6.21 stdlib caused
+    // duplicate-class failures at checkDebugDuplicateClasses.
+    implementation('androidx.preference:preference:1.2.1') {
+        exclude group: 'org.jetbrains.kotlin'
+    }
+
     implementation files('../libs/rabbitmq-client.jar')
     implementation files('../libs/commons-io-1.2.jar')
 }

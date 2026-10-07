@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Stage 8: ui.Prefs now extends AppCompatActivity and hosts a PreferenceFragmentCompat,
+  which requires an AppCompat-compatible theme. This theme is applied only to the Prefs
+  activity in AndroidManifest.xml; other activities keep their existing (default) theme.
+-->
+<resources>
+    <style name="Theme.Envaya.Prefs" parent="Theme.AppCompat.Light.DarkActionBar" />
+</resources>

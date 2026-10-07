@@ -9,7 +9,7 @@ import android.content.DialogInterface.OnClickListener;
 import android.net.Uri;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.text.Html;
+import androidx.core.text.HtmlCompat;
 import android.text.method.LinkMovementMethod;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -176,9 +176,10 @@ public class LogView extends Activity {
     {       
         boolean enabled = app.isEnabled();
         
-        heading.setText(Html.fromHtml(
+        heading.setText(HtmlCompat.fromHtml(
              enabled ? "<b>" + getText(R.string.running) + " ("+app.getPhoneNumber()+")</b>" 
-                : "<b>" +getText(R.string.disabled) + "</b>"));       
+                : "<b>" +getText(R.string.disabled) + "</b>",
+            HtmlCompat.FROM_HTML_MODE_COMPACT));       
         
         if (enabled)
         {
