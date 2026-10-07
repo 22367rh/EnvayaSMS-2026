@@ -25,11 +25,8 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK (platform-34 + accept licenses)
-        uses: android-actions/sdk@v2
-        with:
-          sdk-version: 'platforms;android-34'
-          install-tools: 'platform-tools;build-tools;34.0.0'
+      - name: Set up Android SDK (installs platform + accepts licenses)
+        uses: android-actions/setup-android@v3
 
       - name: Run unit tests (Java/Kotlin)
         run: ./gradlew :app:testReleaseUnitTest --no-daemon --stacktrace
