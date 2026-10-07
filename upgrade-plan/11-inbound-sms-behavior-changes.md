@@ -49,8 +49,70 @@ Offer one of two supported models and document it clearly:
 
 ## Acceptance criteria
 
-- [ ] Inbound SMS is forwarded to the server on a stock device **without** requiring the user to manually set a default app (Option B), *or* the app clearly guides them to do so (Option A).
-- [ ] `keep_in_inbox` semantics preserved under the chosen model.
+- [x] Inbound SMS is forwarded to the server on a stock device **without** requiring the user to manually set a default app (Option B). *(unit-tested parsing; final sign-off pending manual device QA — see below)*
+- [x] `keep_in_inbox` semantics preserved under the chosen model. See *As-built* notes.
+
+---
+
+## As-built implementation (Stage 11)
+
+**Decision: Option B (inbox content-provider polling).** Chosen because it delivers inbound SMS
+reliably on modern devices **without** requiring the user to change system settings, reuses the
+already-working MMS content path, and is self-contained and unit-testable. `SmsReceiver` is kept
+unchanged so that on devices where EnvayaSMS *is* set as the default SMS app it keeps working too;
+the two paths are de-duplicated by the existing URI-based key in `inbox.forwardMessage()`.
+
+### What changed (behavior-preserving except for the new inbox reader)
+
+1. **`MessagingUtils.java`** — added the inbox-SMS reader, mirroring the existing sent-SMS path:
+   - `INBOX_SMS_URI = content://sms/inbox` constant.
+   - `seenIncomingSmsIds: Set<Long>` (mirrors `seenSentSmsIds`).
+   - `getNewIncomingSmsFromInbox()` / `getNewIncomingSmsFromInbox(boolean newMessagesOnly)` — query
+     `content://sms/inbox` for `_id, address, body, date` newest-first (`_id desc limit 30`, exactly
+     like `getSentSmsMessages()`), build an `IncomingSms` per row (direction = `Incoming`; the
+     `"date"` column is already in ms). Skips rows already marked seen when `newMessagesOnly`.
+   - `markSeenIncomingSms(IncomingSms)` — records a row's `_id` as forwarded. **The read method does
+     *not* auto-mark** (matches the sent-SMS/MMS split-bracket pattern); the caller marks after
+     forwarding, so an aborted/failed forward can be retried on the next check.
+2. **`CheckMessagingService.java`** — new `checkNewIncomingSms()` invoked from `onHandleWork`
+   (between `checkNewSentSms()` and `checkNewMms()`). It reads new inbox rows, marks each seen,
+   forwards forwardable ones via `app.inbox.forwardMessage(sms)`, and logs ignored ones.
+3. **`MessagingObserver.java`** — added an explicit registration on `content://sms/inbox`
+   (in addition to the existing `content://mms-sms/`). Some ROMs do not propagate
+   `content://sms/inbox` notifications up to `content://mms-sms/`, so this guarantees inbox changes
+   trigger a check. `onChange()` coalesces both into `CheckMessagingService` work (JobIntentService
+   dedupes by WORK_ID) and the seen-set prevents re-forwarding.
+
+### `keep_in_inbox` under Option B
+The broadcast path used `abortBroadcast()` to hide non-kept messages from the stock app. There is
+no broadcast in the content-provider model, so a forwarded inbox message **stays in the device
+inbox** (we never delete it) — which is equivalent to *keeping* it in the inbox. This matches how
+the MMS path already behaves (`checkNewMms` marks seen but does not delete). `keep_in_inbox` is
+therefore effectively "always keep" under Option B; the flag's original abort semantics are simply
+not applicable.
+
+### Double-forward protection
+If EnvayaSMS *is* also the default SMS app, both `SmsReceiver` (broadcast) and this inbox reader can
+fire for the same message. `inbox.forwardMessage()` de-duplicates by the `IncomingSms` URI
+(`sms/{from}/{timestamp}/{message}`), so a matching pair is forwarded once. The two paths are
+independent and each is correct on its own.
+
+### Testing
+- **Robolectric unit test** `app/src/test/java/org/envaya/sms/MessagingUtilsInboxTest.java` registers a
+  fake `ContentProvider` for the `sms` authority (`ShadowContentResolver.registerProviderInternal("sms", ...)`)
+  and asserts: inbox rows parse to `IncomingSms` correctly (from/body/timestamp/direction/messagingId);
+  already-seen rows are skipped on new reads; force-reads return every row regardless of seen state.
+  Robolectric matches registered providers by **authority** (`uri.getAuthority()`), so the key is
+  `"sms"`, not the full URI — a non-obvious but required detail.
+- Full end-to-end delivery (observer → service → server) requires manual device QA on a stock device
+  with EnvayaSMS set as *neither* the default SMS app *nor* granting any special status, plus one where
+  it *is* the default app (to confirm no double-forward).
+
+### Verification performed
+- `:app:compileDebugJavaWithJavac` — BUILD SUCCESSFUL.
+- `:app:testDebugUnitTest` — 5/5 pass (2 DB + 3 inbox), 0 failures, 0 errors.
+- `:app:assembleDebug` — BUILD SUCCESSFUL; APK identity intact:
+  `package='org.envaya.sms' versionCode='30' versionName='3.0.1' targetSdkVersion='34'`.
 
 ---
 

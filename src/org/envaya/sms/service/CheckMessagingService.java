@@ -43,10 +43,33 @@ public class CheckMessagingService extends JobIntentService
 
     @Override
     protected void onHandleWork(Intent intent)
-    {            
+    {        
         checkNewSentSms();
+        // Option B (see upgrade-plan/11): read inbound SMS from the inbox provider so forwarding
+        // works even when EnvayaSMS is not the default SMS app. Fires from the same content://mms-sms/
+        // observer that triggers this service for MMS/sent-SMS.
+        checkNewIncomingSms();
         
         checkNewMms();
+    }
+    
+    private void checkNewIncomingSms()
+    {
+        List<IncomingSms> messages = messagingUtils.getNewIncomingSmsFromInbox(true);
+        for (IncomingSms sms : messages)
+        {
+            messagingUtils.markSeenIncomingSms(sms);
+
+            if (sms.isForwardable())
+            {
+                app.log("New inbound SMS id=" + sms.getMessagingId() + " in inbox");
+                app.inbox.forwardMessage(sms);
+            }
+            else
+            {
+                app.log("Ignoring unforwardable inbound SMS id=" + sms.getMessagingId());
+            }
+        }
     }
     
     private void checkNewSentSms()
