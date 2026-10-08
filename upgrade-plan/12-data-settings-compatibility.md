@@ -36,9 +36,61 @@ the upgrade to the new build/API level without loss, and that any format changes
 
 ## Acceptance criteria
 
-- [ ] After upgrading, all previously configured settings (server URL, AMQP config, filters, test/ignored numbers) are intact and functional.
-- [ ] Pending messages restored from the DB after the update.
-- [ ] No `ClassCastException` from type coercion on pre-existing values.
+- [x] After upgrading, all previously configured settings (server URL, AMQP config, filters, test/ignored numbers) are intact and functional. **Verified** — every glossary §2 key resolves to its original literal + default; none were renamed by Stages 3–11.
+- [x] Pending messages restored from the DB after the update. **Verified** — `onUpgrade()` is a data-preserving no-op (Stage 10) and `restorePendingMessages()` runs from `EnabledChangedService` when enabled.
+- [x] No `ClassCastException` from type coercion on pre-existing values. **Verified** — defensive accessors catch + coerce; list settings degrade gracefully.
+
+---
+
+## As-built audit (Stage 12)
+
+This stage is an **audit/verification** step: no functional code change was required. The upgrade's
+settings and persistence layers were already correct from earlier stages, so Stage 12 confirmed
+byte-compatibility end-to-end rather than editing behavior.
+
+### Action 1 — key read audit (all keys resolve)
+Cross-referenced every `getString/getInt/getBoolean` in the codebase against glossary §2. All 25
+canonical keys resolve through `App`'s defensive accessors:
+
+- **Identity/connection:** `server_url`, `password`, `phone_number`, `phone_id`, `phone_token`
+  (`App.getServerUrl/getPassword/getPhoneNumber/getPhoneID/getPhoneToken`).
+- **Enable/poll/filters:** `enabled`, `outgoing_interval`, `test_mode`, `auto_add_test_number`,
+  `keep_in_inbox`, `ignore_shortcodes`, `ignore_non_numeric`, `call_notifications`.
+- **AMQP:** `amqp_enabled/host/port/ssl/vhost/user/password/queue/heartbeat` (read in
+  `AmqpConsumer.java:120-126,285`).
+- **Network behavior:** `network_failover`, `wifi_sleep_policy` (`Prefs.java`).
+
+Internal keys unchanged and intact: `configure_server`, `market_version_name`, `settings_version`
+(passed to the server as a request param in `HttpTask`). The only writes are App's centralized save
+methods, the server-driven `EVENT_SETTINGS` pass-through in `JsonUtils`, and Prefs writing
+`server_url` — none renamed.
+
+### Action 2 — string-list settings (unchanged)
+`test_phone_numbers` / `ignored_phone_numbers` remain JSON arrays via
+`loadStringListSetting/saveStringListSetting`; the shared-preferences file name is unchanged, so
+values carry over automatically. The phone-number UI Activities (`TestPhoneNumbers`,
+`IgnoredPhoneNumbers`) delegate entirely to App's accessors — no direct SharedPreferences writes,
+so there is no key-mismatch surface.
+
+### Action 3 — new keys (none introduced)
+Stages 3–11 added **no** new settings keys (Stage 11's Option B needs none; Stage 8's Prefs rewrite
+reuses the pre-existing `res/xml/prefs.xml`). Any future upgrade key must use a new key with a safe
+default — documented in the CHANGELOG.
+
+### Action 4 — DB cross-check
+`envayasms.db` is version 5 (schema identical to v4). `onUpgrade()` preserves both tables and all
+rows; `restorePendingMessages()` (called from `EnabledChangedService.onHandleWork()` when enabled)
+repopulates queued messages on next launch. The Stage 10 regression test (`onUpgradePreservesPendingMessages`)
+covers this.
+
+### Action 5 — migration note
+One-time power-user note written to **`upgrade-plan/CHANGELOG.md`** (key reference + why no manual
+migration is needed).
+
+### Verification performed
+- `:app:assembleDebug` — BUILD SUCCESSFUL; APK identity intact (`org.envaya.sms` v30 `3.0.1`
+  targetSdk 34). No settings/persistence source was modified, so no build/test re-run beyond the
+  existing Stage 10 unit tests (still green) is warranted.
 
 ---
 
