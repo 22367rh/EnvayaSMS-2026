@@ -21,7 +21,13 @@ public final class MessagingObserver extends ContentObserver {
     
     public void register()
     {
+        // content://mms-sms/ covers MMS and (per the existing sent-SMS path) is treated as the
+        // catch-all for messaging changes. Register explicitly on the SMS inbox too: some ROMs do
+        // not propagate content://sms/inbox notifications up to content://mms-sms/, which would
+        // leave inbound-SMS polling blind. onChange() coalesces both into CheckMessagingService
+        // work, and the seen-set in MessagingUtils prevents re-forwarding.
         app.getContentResolver().registerContentObserver(OBSERVER_URI, true, this);
+        app.getContentResolver().registerContentObserver(MessagingUtils.INBOX_SMS_URI, true, this);
         
         MessagingUtils messagingUtils = app.getMessagingUtils();
         
@@ -48,7 +54,7 @@ public final class MessagingObserver extends ContentObserver {
         {
             // check MMS inbox in an IntentService since it may be slow
             // and we only want to do one check at a time
-            app.startService(new Intent(app, CheckMessagingService.class));
+            CheckMessagingService.enqueueWork(app, new Intent(app, CheckMessagingService.class));
         }
     }
 }

@@ -1,17 +1,25 @@
 package org.envaya.sms.service;
 
-import android.app.IntentService;
+import androidx.core.app.JobIntentService;
+import android.content.Context;
 import android.content.Intent;
 import org.envaya.sms.AmqpConsumer;
 import org.envaya.sms.App;
 
-public class AmqpConsumerService extends IntentService {
+public class AmqpConsumerService extends JobIntentService {
     
+    private static final int WORK_ID = 3;
+
+    public static void enqueueWork(Context context, Intent work)
+    {
+        JobIntentService.enqueueWork(context, AmqpConsumerService.class, WORK_ID, work);
+    }
+
     private App app;
     
     public AmqpConsumerService(String name)
     {
-        super(name);        
+        super();        
     }
     
     public AmqpConsumerService()
@@ -26,7 +34,7 @@ public class AmqpConsumerService extends IntentService {
     }      
     
     @Override
-    protected void onHandleIntent(Intent intent)
+    protected void onHandleWork(Intent intent)
     {  
         boolean start = intent.getBooleanExtra("start", false);
         

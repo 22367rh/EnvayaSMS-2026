@@ -1,7 +1,6 @@
 package org.envaya.sms;
 
 import android.content.Intent;
-import android.telephony.SmsManager;
 import java.util.ArrayList;
 
 public class OutgoingSms extends OutgoingMessage {
@@ -22,8 +21,8 @@ public class OutgoingSms extends OutgoingMessage {
     {
         if (_bodyParts == null)
         {
-            SmsManager smgr = SmsManager.getDefault();
-            _bodyParts = smgr.divideMessage(getMessageBody());
+            // Resolve the default-SIM send manager (SIM-aware on API 31+, reflective fallback below).
+            _bodyParts = SmsSender.divideMessage(app, getMessageBody());
         }
         return _bodyParts;
     }

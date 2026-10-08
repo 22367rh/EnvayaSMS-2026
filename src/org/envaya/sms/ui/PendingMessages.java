@@ -250,16 +250,15 @@ public class PendingMessages extends ListActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle item selection
-        switch (item.getItemId()) {
-        case R.id.retry_all:
+        int itemId = item.getItemId();
+        if (itemId == R.id.retry_all) {
             retryAllClicked();
             return true;
-        case R.id.delete_all:
+        } else if (itemId == R.id.delete_all) {
             deleteAllClicked();
-            return true;            
-        default:
-            return super.onOptionsItemSelected(item);
+            return true;
         }
+        return super.onOptionsItemSelected(item);
     }    
     
     // first time the Menu key is pressed

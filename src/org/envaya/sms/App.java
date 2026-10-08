@@ -12,16 +12,18 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
-import android.text.Html;
 import android.text.SpannableStringBuilder;
+import android.os.Build;
 import android.util.Log;
+import java.lang.reflect.Method;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -30,22 +32,17 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
-import org.apache.http.client.HttpClient;
-import org.apache.http.conn.scheme.PlainSocketFactory;
-import org.apache.http.conn.scheme.Scheme;
-import org.apache.http.conn.scheme.SchemeRegistry;
-import org.apache.http.conn.ssl.SSLSocketFactory;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
-import org.apache.http.params.BasicHttpParams;
-import org.apache.http.params.HttpConnectionParams;
-import org.apache.http.params.HttpParams;
-import org.apache.http.params.HttpProtocolParams;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.TimeUnit;
+import okhttp3.OkHttpClient;
 import org.envaya.sms.receiver.OutgoingMessagePoller;
 import org.envaya.sms.task.CheckConnectivityTask;
 import org.envaya.sms.task.HttpTask;
 import org.envaya.sms.task.PollerTask;
-import org.apache.http.message.BasicNameValuePair;
+import org.envaya.sms.task.NameValuePair;
 import org.json.JSONArray;
 import org.json.JSONException;
 
@@ -169,19 +166,31 @@ public final class App extends Application {
     
     private boolean connectivityError = false;
     
+    /**
+     * Central background executor for all network / async work.
+     *
+     * Replaces android.os.AsyncTask's internal thread pool, which was made obsolete
+     * in API 30. A cached pool lets independent forwards/polls run concurrently
+     * instead of serializing on a single worker; daemon threads never block process
+     * exit. Kept static and reassignable so tests can substitute a stub executor.
+     */
+    public static Executor httpExecutor = Executors.newCachedThreadPool(new ThreadFactory()
+    {
+        private final AtomicInteger counter = new AtomicInteger();
+
+        @Override
+        public Thread newThread(Runnable r)
+        {
+            Thread thread = new Thread(r, "envaya-http-" + counter.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        }
+    });
+
     @Override
     public void onCreate()
     {
         super.onCreate();
-        
-        // workaround for http://code.google.com/p/android/issues/detail?id=20915
-        try
-        {
-            Class.forName("android.os.AsyncTask");
-        }
-        catch (ClassNotFoundException ex)
-        {
-        }
         
         settings = PreferenceManager.getDefaultSharedPreferences(this);        
         messagingUtils = new MessagingUtils(this);
@@ -224,7 +233,7 @@ public final class App extends Application {
     {
         // startup/shutdown tasks may be slow, so offload them to a worker thread...
         // IntentService takes care of only running one request at a time        
-        startService(new Intent(this, EnabledChangedService.class));        
+        EnabledChangedService.enqueueWork(this, new Intent(this, EnabledChangedService.class));        
     }
     
     public PackageInfo getPackageInfo()
@@ -284,11 +293,11 @@ public final class App extends Application {
         log("To increase this limit, install an expansion pack.");
                 
         HttpTask task = new HttpTask(this, 
-            new BasicNameValuePair("action", App.ACTION_DEVICE_STATUS),
-            new BasicNameValuePair("status", App.DEVICE_STATUS_SEND_LIMIT_EXCEEDED)
+            new NameValuePair("action", App.ACTION_DEVICE_STATUS),
+            new NameValuePair("status", App.DEVICE_STATUS_SEND_LIMIT_EXCEEDED)
         );        
         task.setRetryOnConnectivityError(true);
-        task.execute();
+        task.execute(App.httpExecutor);
         
         return null;
     }    
@@ -408,8 +417,8 @@ public final class App extends Application {
             String serverUrl = getServerUrl();
             if (serverUrl.length() > 0) {
                 log("Checking for messages");
-                pollActive = true;                
-                new PollerTask(this).execute();
+                pollActive = true;
+                new PollerTask(this).execute(App.httpExecutor);
             } else {
                 log("Can't check messages; server URL not set");
             }
@@ -427,7 +436,7 @@ public final class App extends Application {
         PendingIntent pendingIntent = PendingIntent.getBroadcast(this,
                 0,
                 new Intent(this, OutgoingMessagePoller.class),
-                0);
+                PendingIntent.FLAG_IMMUTABLE);
 
         alarm.cancel(pendingIntent);
 
@@ -863,37 +872,24 @@ public final class App extends Application {
         return true;
     }
     
-    private HttpClient httpClient;
+    private OkHttpClient httpClient;
     
-    public HttpParams getDefaultHttpParams()
-    {
-        HttpParams httpParams = new BasicHttpParams();
-        HttpConnectionParams.setConnectionTimeout(httpParams, HTTP_CONNECTION_TIMEOUT);
-        HttpConnectionParams.setSoTimeout(httpParams, HTTP_SOCKET_TIMEOUT);                    
-        HttpProtocolParams.setContentCharset(httpParams, "UTF-8");            
-        return httpParams;
-    }
-    
-    public synchronized HttpClient getHttpClient()
+    /**
+     * Shared OkHttp client for all server requests. Replaces the old Apache
+     * HttpClient stack, which was removed from the Android platform in API 23+.
+     * Uses OkHttp's default, secure TLS with proper hostname verification -- the
+     * old Apache BROWSER_COMPATIBLE_HOSTNAME_VERIFIER was insecure and is gone.
+     * Timeouts mirror the HTTP_CONNECTION_TIMEOUT / HTTP_SOCKET_TIMEOUT constants.
+     */
+    public synchronized OkHttpClient getHttpClient()
     {
         if (httpClient == null)
         {
-            // via http://thinkandroid.wordpress.com/2009/12/31/creating-an-http-client-example/
-            // also http://hc.apache.org/httpclient-3.x/threading.html
-            
-            HttpParams httpParams = getDefaultHttpParams();            
-            
-            SchemeRegistry registry = new SchemeRegistry();
-            registry.register(new Scheme("http", PlainSocketFactory.getSocketFactory(), 80));
-            
-            final SSLSocketFactory sslSocketFactory = SSLSocketFactory.getSocketFactory();            
-            sslSocketFactory.setHostnameVerifier(SSLSocketFactory.BROWSER_COMPATIBLE_HOSTNAME_VERIFIER);
-            
-            registry.register(new Scheme("https", sslSocketFactory, 443));
-
-            ThreadSafeClientConnManager manager = new ThreadSafeClientConnManager(httpParams, registry);            
-            
-            httpClient = new DefaultHttpClient(manager, httpParams);        
+            httpClient = new OkHttpClient.Builder()
+                    .connectTimeout(HTTP_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)
+                    .readTimeout(HTTP_SOCKET_TIMEOUT, TimeUnit.MILLISECONDS)
+                    .writeTimeout(HTTP_SOCKET_TIMEOUT, TimeUnit.MILLISECONDS)
+                    .build();
         }
         return httpClient;
     }      
@@ -945,21 +941,14 @@ public final class App extends Application {
         ConnectivityManager cm = 
             (ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
 
-        NetworkInfo activeNetwork = cm.getActiveNetworkInfo();                
+        int networkType = getConnectedNetworkType(cm);
 
-        if (activeNetwork == null || !activeNetwork.isConnected())
+        if (networkType < 0)
         {
-            WifiManager wmgr = (WifiManager)getSystemService(Context.WIFI_SERVICE);            
+            WifiManager wmgr = (WifiManager)getSystemService(Context.WIFI_SERVICE);
 
-            if (activeNetwork != null)
-            {
-                log(activeNetwork.getTypeName() + "=" + activeNetwork.getState());
-            }
-            else
-            {
-                log("Not connected to any network.");   
-            }
-            
+            log("Not connected to any network.");
+
             if (!wmgr.isWifiEnabled() && isNetworkFailoverEnabled())
             {
                 log("Enabling WIFI...");
@@ -968,8 +957,7 @@ public final class App extends Application {
 
             return;
         }
-        
-        final int networkType = activeNetwork.getType();
+
         
         ConnectivityCheckState state = 
             connectivityCheckStates.get(networkType);
@@ -981,7 +969,7 @@ public final class App extends Application {
         }
 
         if (!state.canCheck()
-            || (checkConnectivityTask != null && checkConnectivityTask.getStatus() != AsyncTask.Status.FINISHED))
+            || (checkConnectivityTask != null && checkConnectivityTask.isRunning()))
         {
             return;
         }
@@ -994,9 +982,73 @@ public final class App extends Application {
         log("Checking connectivity to "+hostName+"...");
         
         checkConnectivityTask = new CheckConnectivityTask(this, hostName, networkType);
-        checkConnectivityTask.execute();
+        checkConnectivityTask.execute(App.httpExecutor);
     }
     
+    /**
+     * Returns the network type (a ConnectivityManager.TYPE_* constant) of the active
+     * internet-capable network, or -1 if there is none. Uses the modern capabilities model on
+     * API 23+ and falls back to the (deprecated) getActiveNetworkInfo() reflectively on API
+     * 21-22 so this class carries no compile-time reference to a symbol that varies by platform.
+     * NetworkInfo's own methods (isConnected/getType) are not deprecated, so they are called
+     * normally once the manager is obtained.
+     */
+    private static int getConnectedNetworkType(ConnectivityManager cm) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network net = cm.getActiveNetwork();
+                if (net == null) {
+                    return -1;
+                }
+                NetworkCapabilities caps = cm.getNetworkCapabilities(net);
+                if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                    return -1;
+                }
+                // Network itself carries no type int; resolve it from the NetworkInfo.
+                NetworkInfo info = cm.getNetworkInfo(net);
+                return info != null ? info.getType() : -1;
+            }
+            // API 21-22: getActiveNetwork()/getNetworkCapabilities() are unavailable; the only
+            // framework option is the deprecated getActiveNetworkInfo(), invoked reflectively.
+            Method m = ConnectivityManager.class.getMethod("getActiveNetworkInfo");
+            NetworkInfo info = (NetworkInfo) m.invoke(cm);
+            if (info == null || !info.isConnected()) {
+                return -1;
+            }
+            return info.getType();
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Human-readable name for a connectivity network type (e.g. "Wi-Fi"). The platform's
+     * ConnectivityManager.getNetworkTypeName(int) is only available from API 31, so resolve it
+     * reflectively on newer versions and fall back to a small local mapping below on older ones.
+     */
+    private static String networkTypeName(int type) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                java.lang.reflect.Method m = ConnectivityManager.class.getMethod("getNetworkTypeName", int.class);
+                return (String) m.invoke(null, type);
+            }
+        } catch (Exception e) {
+            // fall through to the local mapping below
+        }
+        switch (type) {
+            case ConnectivityManager.TYPE_WIFI:
+                return "Wi-Fi";
+            case ConnectivityManager.TYPE_MOBILE:
+                return "Mobile";
+            case ConnectivityManager.TYPE_WIMAX:
+                return "WiMax";
+            case ConnectivityManager.TYPE_BLUETOOTH:
+                return "Bluetooth";
+            default:
+                return String.valueOf(type);
+        }
+    }
+
     private int activeNetworkType = -1;
     
     public synchronized void onConnectivityChanged()
@@ -1004,18 +1056,17 @@ public final class App extends Application {
         ConnectivityManager cm = 
             (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
         
-        NetworkInfo networkInfo = cm.getActiveNetworkInfo();
-        
-        if (networkInfo == null || !networkInfo.isConnected())
+        int networkType = getConnectedNetworkType(cm);
+
+        if (networkType < 0)
         {
             amqpConsumer.stopAsync();
-            
+
             return;
         }
 
         amqpConsumer.startDelayed(5000);
-        
-        int networkType = networkInfo.getType();
+
         
         if (networkType == activeNetworkType)
         {
@@ -1023,7 +1074,7 @@ public final class App extends Application {
         }        
         
         activeNetworkType = networkType;        
-        log("Connected to " + networkInfo.getTypeName());        
+        log("Connected to " + networkTypeName(networkType));        
         asyncCheckConnectivity();
     }
     
@@ -1063,7 +1114,7 @@ public final class App extends Application {
                 break;
             }
             
-            task.execute();
+            task.execute(App.httpExecutor);
         }
     }
     

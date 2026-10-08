@@ -3,7 +3,7 @@ package org.envaya.sms.receiver;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import org.apache.http.message.BasicNameValuePair;
+import org.envaya.sms.task.NameValuePair;
 import org.envaya.sms.App;
 import org.envaya.sms.task.HttpTask;
 
@@ -44,8 +44,8 @@ public class DeviceStatusReceiver extends BroadcastReceiver
         }
 
         HttpTask task = new HttpTask(app, 
-            new BasicNameValuePair("action", App.ACTION_DEVICE_STATUS),
-            new BasicNameValuePair("status", status)
+            new NameValuePair("action", App.ACTION_DEVICE_STATUS),
+            new NameValuePair("status", status)
         );
         task.setRetryOnConnectivityError(true);
         task.execute();

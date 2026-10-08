@@ -1,0 +1,5 @@
+// Root project is a plain Gradle container for the EnvayaSMS modules.
+// The single Android application module is ':app' (see :app:build.gradle).
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}

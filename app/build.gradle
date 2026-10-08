@@ -1,0 +1,87 @@
+// Single Android application module for EnvayaSMS.
+// Source files are kept in place at the repo root; only these sourceSets point up one level.
+plugins {
+    id 'com.android.application' version '8.5.2'
+}
+
+android {
+    namespace = 'org.envaya.sms'
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "org.envaya.sms"
+        minSdk = 21
+        targetSdk = 34
+        versionCode = 30
+        versionName = "3.0.1"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile '../AndroidManifest.xml'
+            java.srcDirs = ['../src']
+            res.srcDirs = ['../res']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+        }
+    }
+
+    lint {
+        abortOnError = false
+    }
+
+    // Unit tests run on the JVM via Robolectric (no emulator needed). They exercise the real
+    // SQLite layer through Robolectric's embedded-SQLite shadow of android.database.sqlite.*.
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            returnDefaultValues = true
+        }
+    }
+}
+
+dependencies {
+    // Stage 10: fast JVM tests for the persistence layer (SQLite upgrade/restore logic).
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.11.1'
+
+    // ------------------------------------------------------------------
+    // TEMPORARY (Stage 1): keep the current code compiling as-is.
+    //   * org.apache.http.* is provided by httpclient + httpmime until
+    //     Step 3 migrates the HTTP layer to OkHttp, then these are removed.
+    //   * commons-io jar is carried over from libs/ and replaced by a Maven dependency
+    //     in a later step (Step 12). The rabbitmq-client.jar was replaced in Step 9.
+    // Stage 3 migrated the HTTP layer off org.apache.http.* (removed from
+    // the platform in API 23) to OkHttp, so these temporary deps are gone.
+    implementation 'com.squareup.okhttp3:okhttp:3.14.9'
+
+    // Stage 4: JobIntentService (drop-in replacement for the deprecated
+    // android.app.IntentService, obsolete in API 30). Pure-Java AAR, no
+    // Kotlin stdlib required; works on minSdk 21.
+    implementation 'androidx.core:core:1.13.1'
+
+    // Stage 8: PreferenceFragmentCompat (drop-in replacement for the deprecated
+    // android.preference.PreferenceActivity). Brings in androidx.appcompat transitively,
+    // which Prefs now extends so it can host the preference fragment.
+    // Exclude preference's transitive Kotlin stdlib: this project is pure Java and already
+    // carries a compatible kotlin-stdlib (1.8.22); preference's older 1.6.21 stdlib caused
+    // duplicate-class failures at checkDebugDuplicateClasses.
+    implementation('androidx.preference:preference:1.2.1') {
+        exclude group: 'org.jetbrains.kotlin'
+    }
+
+    // Stage 9: modern, maintained AMQP client (replaces the old bundled
+    // libs/rabbitmq-client.jar). Pinned to avoid surprise breaking changes.
+    implementation 'com.rabbitmq:amqp-client:5.21.0'
+
+    implementation files('../libs/commons-io-1.2.jar')
+}

@@ -1,14 +1,13 @@
 package org.envaya.sms.task;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.message.BasicNameValuePair;
 import org.envaya.sms.IncomingMessage;
+import okhttp3.Response;
 
 public class ForwarderTask extends HttpTask {
 
     private IncomingMessage message;
 
-    public ForwarderTask(IncomingMessage message, BasicNameValuePair... paramsArr) {
+    public ForwarderTask(IncomingMessage message, NameValuePair... paramsArr) {
         super(message.app, paramsArr);
         this.message = message;                
     }
@@ -19,7 +18,7 @@ public class ForwarderTask extends HttpTask {
     }
 
     @Override
-    protected void handleResponse(HttpResponse response) throws Exception {
+    protected void handleResponse(Response response) throws Exception {
         app.inbox.messageForwarded(message);       
         super.handleResponse(response);
     }

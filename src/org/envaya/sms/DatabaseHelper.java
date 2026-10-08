@@ -10,7 +10,10 @@ import android.database.sqlite.SQLiteOpenHelper;
 public class DatabaseHelper extends SQLiteOpenHelper {
     
     public static final String DATABASE_NAME = "envayasms.db";
-    public static final int DATABASE_VERSION = 4;        
+    // Bumped 4 -> 5 in the Android 13 modernization (Stage 10). The schema is unchanged,
+    // so this bump exists only to give onUpgrade() a hook that preserves pending-message
+    // data across app updates instead of dropping it.
+    public static final int DATABASE_VERSION = 5;        
     
     private App app;
     
@@ -51,9 +54,14 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion)
     {
-        db.execSQL("DROP TABLE IF EXISTS pending_incoming_messages");
-        db.execSQL("DROP TABLE IF EXISTS pending_outgoing_messages");
-        onCreate(db);
+        // v4 -> v5: no schema change. Preserve both tables and all of their rows so that
+        // queued (unforwarded) messages survive an app update.
+        //
+        // NOTE: earlier versions dropped and recreated both tables here, which silently
+        // destroyed every pending incoming/outgoing message on each major-version upgrade -
+        // the opposite of the restore-after-restart intent documented in onCreate(). The
+        // schema uses only INTEGER/VARCHAR/TEXT columns that remain valid on modern SQLite,
+        // so there is nothing to migrate; a no-op upgrade is the correct, data-safe behavior.
     }    
     
     public synchronized void restorePendingMessages()

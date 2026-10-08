@@ -21,6 +21,12 @@ public class MessagingUtils
     public static final Uri MMS_PART_URI = Uri.parse("content://mms/part");    
     
     public static final Uri SENT_SMS_URI = Uri.parse("content://sms/sent");
+
+    // content://sms/inbox holds messages received by the device. Since Android 4.4 (API 19) only
+    // the default SMS app reliably receives the SMS_RECEIVED broadcast and can abortBroadcast(),
+    // we also poll this provider (like MMS) so inbound forwarding keeps working on modern devices
+    // even when EnvayaSMS is not the default texting app. See upgrade-plan/11-inbound-sms-behavior-changes.md.
+    public static final Uri INBOX_SMS_URI = Uri.parse("content://sms/inbox");    
     
     // constants from com.google.android.mms.pdu.PduHeaders  
     private static final int PDU_HEADER_FROM = 0x89;    
@@ -30,6 +36,9 @@ public class MessagingUtils
     private final Set<Long> seenMmsIds = new HashSet<Long>();
     
     private final Set<Long> seenSentSmsIds = new HashSet<Long>();
+
+    // _ids of inbox SMS rows already forwarded, so we don't re-forward them. Mirrors seenSentSmsIds.
+    private final Set<Long> seenIncomingSmsIds = new HashSet<Long>();
     
     private App app;
     private ContentResolver contentResolver;
@@ -229,6 +238,68 @@ public class MessagingUtils
     public synchronized void markSeenSentSms(IncomingSms sms)
     {
         long id = sms.getMessagingId();
-        seenSentSmsIds.add(id);
+        if (id > 0)
+        {
+            seenSentSmsIds.add(id);
+        }
+    }
+
+    /*
+     * Read SMS rows that arrived in the device inbox since EnvayaSMS last looked. This is the
+     * content-provider equivalent of the SMS_RECEIVED broadcast that SmsReceiver used to rely on;
+     * it lets inbound forwarding work without being the default SMS app. Rows are read newest-first,
+     * mirroring getSentSmsMessages(). The "date" column here is already in milliseconds.
+     */
+    public synchronized List<IncomingSms> getNewIncomingSmsFromInbox()
+    {
+        return getNewIncomingSmsFromInbox(false);
+    }
+
+    public synchronized List<IncomingSms> getNewIncomingSmsFromInbox(boolean newMessagesOnly)
+    {
+        Cursor c = contentResolver.query(INBOX_SMS_URI,
+                new String[]{"_id", "address", "body", "date"}, null, null,
+                "_id desc limit 30");
+
+        List<IncomingSms> messages = new ArrayList<IncomingSms>();
+
+        while (c.moveToNext())
+        {
+            long id = c.getLong(0);
+
+            if (newMessagesOnly && seenIncomingSmsIds.contains(id))
+            {
+                continue;
+            }
+
+            String from = c.getString(1);
+            String body = c.getString(2);
+            long date = c.getLong(3);
+
+            IncomingSms sms = new IncomingSms(app);
+            sms.setMessagingId(id);
+            if (from != null)
+            {
+                sms.setFrom(from);
+            }
+            sms.setMessageBody(body);
+            sms.setTimestamp(date);
+            // Received messages are direction=Incoming; isForwardable() then keys off the sender.
+            sms.setDirection(IncomingSms.Direction.Incoming);
+
+            messages.add(sms);
+        }
+        c.close();
+
+        return messages;
+    }
+
+    public synchronized void markSeenIncomingSms(IncomingSms sms)
+    {
+        long id = sms.getMessagingId();
+        if (id > 0)
+        {
+            seenIncomingSmsIds.add(id);
+        }
     }    
-}        
+}
