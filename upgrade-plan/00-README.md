@@ -78,4 +78,5 @@ Each document below follows the same structure:
 11. [`11-inbound-sms-behavior-changes.md`](11-inbound-sms-behavior-changes.md) — default-SMS-app reality for `SMS_RECEIVED`/`abortBroadcast()`.
 12. [`12-data-settings-compatibility.md`](12-data-settings-compatibility.md) — preserve user settings & DB across the upgrade (SharedPreferences + schema v4→v5).
 13. [`13-testing-and-qa-gates.md`](13-testing-and-qa-gates.md) — test matrix, CI, manual verification checklist.
-14. [`99-summary-state-differences.md`](99-summary-state-differences.md) — full before/after state comparison + language note (the deliverable the task specifically asks for).
+14. [`14-server-node-multi-tenant-gateway.md`](14-server-node-multi-tenant-gateway.md) — zero-dependency multi-tenant Node.js gateway replacing `server/php` (Core.db + per-user `<user>.db`, byte-compatible signatures).
+15. [`99-summary-state-differences.md`](99-summary-state-differences.md) — full before/after state comparison + language note (the deliverable the task specifically asks for).

@@ -1,0 +1,25 @@
+{
+  "name": "envayasms-gateway",
+  "version": "1.0.0",
+  "description": "Multi-tenant Node.js gateway server for the EnvayaSMS platform. Drop-in replacement for server/php that stores users in Core.db and each tenant's messaging/device data in a separate <user>.db.",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node bin/start.js",
+    "register": "node scripts/register-user.js",
+    "send": "node scripts/send-message.js",
+    "sign": "node scripts/sign-request.js",
+    "smoke": "node scripts/e2e-smoke.js",
+    "test": "node test/gateway.test.js"
+  },
+  "keywords": [
+    "envayasms",
+    "sms",
+    "gateway",
+    "multi-tenant"
+  ],
+  "license": "MIT"
+}

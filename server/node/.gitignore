@@ -1,0 +1,17 @@
+# Node dependencies (kept zero-dependency; included for compatibility with tooling that expects it)
+node_modules/
+
+# Runtime data — SQLite databases, per-tenant DBs, stored MMS parts, WAL files
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Logs & local config
+logs/
+*.log
+.env
+.env.local
