@@ -61,6 +61,12 @@ function createHandler(deps) {
             network: params.network,
             seenAt: new Date(nowMs).toISOString()
         });
+        ud.recordDeviceSample(database, {
+            phoneId: params.phone_id,
+            battery: params.battery,
+            power: params.power,
+            network: params.network
+        });
     }
 
     function successResponse(events, version) {

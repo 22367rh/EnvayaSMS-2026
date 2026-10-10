@@ -13,7 +13,7 @@
     "send": "node scripts/send-message.js",
     "sign": "node scripts/sign-request.js",
     "smoke": "node scripts/e2e-smoke.js",
-    "test": "node test/gateway.test.js"
+    "test": "node --test"
   },
   "keywords": [
     "envayasms",

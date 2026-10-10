@@ -59,6 +59,19 @@ CREATE TABLE IF NOT EXISTS send_status_log (
     error       TEXT DEFAULT '',
     received_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Appended telemetry samples used to draw battery-over-time. One row per device per UTC minute is the
+-- maximum (deduped on phone_id + sample_minute) so history stays bounded without dropping data.
+CREATE TABLE IF NOT EXISTS device_samples (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone_id      TEXT NOT NULL,
+    last_battery  INT DEFAULT -1,
+    last_power    INT DEFAULT -1,
+    last_network  TEXT DEFAULT '',
+    sample_minute TEXT NOT NULL,   -- 'YYYY-MM-DDTHH:MM' (UTC) used for the UNIQUE dedup key
+    seen_at       TEXT NOT NULL,   -- full-precision ISO timestamp of the sample
+    UNIQUE (phone_id, sample_minute)
+);
 `;
 
 const dbCache = new Map(); // username -> DatabaseSync
@@ -106,6 +119,24 @@ function upsertDeviceState(database, { phoneId, phoneToken, deviceStatus, batter
         last_network: network || '',
         last_seen: seenAt || new Date().toISOString()
     });
+}
+
+/**
+ * Append one battery/telemetry sample for history, deduped to once per device per UTC minute so the
+ * samples table stays bounded. Best-effort: never throws.
+ */
+function recordDeviceSample(database, { phoneId, battery, power, network }) {
+    if (!phoneId) return;
+    const now = new Date();
+    const sampleMinute = now.toISOString().slice(0, 16); // 'YYYY-MM-DDTHH:MM' UTC
+    try {
+        database.prepare(
+            `INSERT OR IGNORE INTO device_samples (phone_id, last_battery, last_power, last_network, sample_minute, seen_at)
+             VALUES (?, ?, ?, ?, ?, ?)`
+        ).run(phoneId, battery == null ? -1 : Number(battery), power == null ? -1 : Number(power), network || '', sampleMinute, now.toISOString());
+    } catch (_) {
+        /* dedup / format races are non-fatal */
+    }
 }
 
 /** Store a forwarded incoming message (SMS or MMS). */
@@ -161,6 +192,143 @@ function recordSendStatus(database, serverId, status, error) {
     return info.changes;
 }
 
+// --- history / analytics queries ---------------------------------------------------------------
+
+/** Distinct devices that have reported telemetry (phone_id non-empty), most-recent first. */
+function listDevices(database) {
+    return database
+        .prepare("SELECT phone_id, last_battery, last_power, last_network, last_seen FROM device_state WHERE phone_id <> '' ORDER BY last_seen DESC")
+        .all() || [];
+}
+
+/** Battery samples for one device within [fromIso, toIso] as {t: isoLabel, level}. */
+function getBatterySeries(database, phoneId, fromIso, toIso) {
+    if (!phoneId) return [];
+    const rows = database
+        .prepare('SELECT last_battery AS level, seen_at AS t FROM device_samples WHERE phone_id = ? AND seen_at >= ? AND seen_at <= ? ORDER BY seen_at ASC')
+        .all(phoneId, fromIso, toIso);
+    return (rows || []).map((r) => ({ t: r.t, level: Number(r.level) == null ? -1 : Number(r.level) }));
+}
+
+/**
+ * Sent/received message counts bucketed by hour or day within [fromIso, toIso].
+ * `bucketKind` is 'hour' or 'day'. Returns { buckets: [{key,label,sent,received}] } with zero-filled
+ * gaps walked across the window (clamped so pathological ranges cannot explode memory).
+ */
+function getMessageCountsByBucket(database, fromIso, toIso, bucketKind) {
+    const sentRows = database.prepare('SELECT created_at FROM outgoing_messages WHERE created_at >= ? AND created_at <= ?').all(fromIso, toIso) || [];
+    const incRows = database.prepare('SELECT received_at FROM incoming_messages WHERE received_at >= ? AND received_at <= ?').all(fromIso, toIso) || [];
+
+    const hourMs = 3600_000;
+    const dayMs = 86_400_000;
+    const stepMs = bucketKind === 'hour' ? hourMs : dayMs;
+
+    // Tally raw counts by integer bucket key.
+    const sentBy = new Map();
+    for (const r of sentRows) {
+        const k = Math.floor(Date.parse(parseIso(r.created_at)) / stepMs);
+        sentBy.set(k, (sentBy.get(k) || 0) + 1);
+    }
+    const recvBy = new Map();
+    for (const r of incRows) {
+        const k = Math.floor(Date.parse(parseIso(r.received_at)) / stepMs);
+        recvBy.set(k, (recvBy.get(k) || 0) + 1);
+    }
+
+    // Walk the window emitting a label per bucket, filling gaps with zeros.
+    const buckets = [];
+    let cursor = Math.floor(Date.parse(parseIso(fromIso)) / stepMs) * stepMs;
+    const end = Date.parse(parseIso(toIso));
+    const MAX_BUCKETS = 400; // guard against absurd ranges (e.g. "all")
+    while (cursor <= end && buckets.length < MAX_BUCKETS) {
+        const key = Math.floor(cursor / stepMs);
+        const label = bucketLabel(key, bucketKind);
+        buckets.push({ key, label, sent: sentBy.get(key) || 0, received: recvBy.get(key) || 0 });
+        cursor += stepMs;
+    }
+    return { buckets };
+}
+
+/** Inbox messages (all devices), newest first. Optional exact `sender` filter. */
+function getInbox(database, { sender = '', limit = 500 } = {}) {
+    if (sender) {
+        return database.prepare('SELECT id, sender, body, message_type AS type, received_at FROM incoming_messages WHERE sender = ? ORDER BY received_at DESC, id DESC LIMIT ?').all(sender, limit) || [];
+    }
+    return database.prepare('SELECT id, sender, body, message_type AS type, received_at FROM incoming_messages ORDER BY received_at DESC, id DESC LIMIT ?').all(limit) || [];
+}
+
+/** Outbox messages (all devices), newest first. Optional `to` / `status` filters. */
+function getOutbox(database, { to = '', status = '', limit = 500 } = {}) {
+    if (to && status) {
+        return database.prepare('SELECT id, to_number AS "to", body, status, message_type AS type, created_at FROM outgoing_messages WHERE to_number = ? AND status = ? ORDER BY created_at DESC, id DESC LIMIT ?').all(to, status, limit) || [];
+    }
+    if (to) {
+        return database.prepare('SELECT id, to_number AS "to", body, status, message_type AS type, created_at FROM outgoing_messages WHERE to_number = ? ORDER BY created_at DESC, id DESC LIMIT ?').all(to, limit) || [];
+    }
+    if (status) {
+        return database.prepare('SELECT id, to_number AS "to", body, status, message_type AS type, created_at FROM outgoing_messages WHERE status = ? ORDER BY created_at DESC, id DESC LIMIT ?').all(status, limit) || [];
+    }
+    return database.prepare('SELECT id, to_number AS "to", body, status, message_type AS type, created_at FROM outgoing_messages ORDER BY created_at DESC, id DESC LIMIT ?').all(limit) || [];
+}
+
+/** Distinct conversation partners across all devices with last-activity summary. */
+function getConversations(database) {
+    const incoming = database.prepare('SELECT sender AS phone, received_at AS ts FROM incoming_messages').all() || [];
+    const outgoing = database.prepare('SELECT to_number AS phone, created_at AS ts FROM outgoing_messages').all() || [];
+
+    const map = new Map();
+    for (const r of incoming) addPhone(map, r.phone, r.ts, 'received');
+    for (const r of outgoing) addPhone(map, r.phone, r.ts, 'sent');
+
+    return Array.from(map.values())
+        .map((c) => ({ phone: c.phone, last_body: c.last_body, last_ts: c.last_ts, direction: c.direction, count: c.count }))
+        .sort((a, b) => String(b.last_ts).localeCompare(String(a.last_ts)));
+}
+
+/** All messages in one conversation (both directions), ascending by time. */
+function getConversation(database, phone, ownNumber) {
+    const sent = database.prepare('SELECT to_number AS "to", body, message_type AS type, created_at AS ts FROM outgoing_messages WHERE to_number = ? ORDER BY created_at ASC, id ASC').all(phone) || [];
+    const received = database.prepare('SELECT sender AS "from", body, message_type AS type, received_at AS ts FROM incoming_messages WHERE sender = ? ORDER BY received_at ASC, id ASC').all(phone) || [];
+
+    const outMsgs = sent.map((m) => ({ direction: 'sent', from: ownNumber || '', to: m.to, body: m.body, type: m.type, ts: m.ts }));
+    const inMsgs = received.map((m) => ({ direction: 'received', from: m.from, to: ownNumber || '', body: m.body, type: m.type, ts: m.ts }));
+    return outMsgs.concat(inMsgs).sort((a, b) => String(a.ts).localeCompare(String(b.ts)) || (a.id || 0) - (b.id || 0));
+}
+
+// --- small helpers ------------------------------------------------------------------------------
+
+function addPhone(map, phone, ts, direction) {
+    if (!phone) return;
+    const cur = map.get(phone) || { phone, count: 0, last_ts: '', last_body: '', direction: direction === 'sent' ? 'received' : 'sent' };
+    // Prefer the more recent message's direction as the conversation's dominant direction.
+    if (String(ts) >= String(cur.last_ts)) {
+        cur.last_ts = ts;
+        cur.direction = direction;
+    }
+    cur.count += 1;
+    map.set(phone, cur);
+}
+
+// datetime('now') yields 'YYYY-MM-DD HH:MM:SS' (UTC); parse it as UTC.
+function parseIso(v) {
+    const s = String(v == null ? '' : v).trim();
+    if (!s) return new Date(0).toISOString();
+    let t = s.replace(' ', 'T');
+    // Idempotent: only append a timezone designator when the value lacks one, so it is safe to call
+    // on both stored datetimes ('YYYY-MM-DD HH:MM:SS') and already-ISO strings ('...Z').
+    if (!/[zZ+\-]\d{2}:?\d{2}$/.test(t)) {
+        t += 'Z';
+    }
+    const d = new Date(t);
+    return isNaN(d.getTime()) ? new Date(0).toISOString() : d.toISOString();
+}
+
+function bucketLabel(key, kind) {
+    const d = new Date(key * (kind === 'hour' ? 3600 : 86400) * 1000);
+    if (kind === 'hour') return d.toISOString().slice(11, 16); // HH:MM
+    return d.toISOString().slice(0, 10);                        // YYYY-MM-DD
+}
+
 /** Convenience: row counts in each table (for admin/observability). */
 function stats(database) {
     const q = (sql) => database.prepare(sql).get();
@@ -176,10 +344,18 @@ module.exports = {
     openUserDb,
     closeUserDb,
     upsertDeviceState,
+    recordDeviceSample,
     insertIncoming,
     enqueueOutgoing,
     getOutgoingById,
     claimQueuedOutgoing,
     recordSendStatus,
+    listDevices,
+    getBatterySeries,
+    getMessageCountsByBucket,
+    getInbox,
+    getOutbox,
+    getConversations,
+    getConversation,
     stats
 };

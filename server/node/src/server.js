@@ -1,60 +1,142 @@
 'use strict';
 
 /*
- * Thin HTTP layer that adapts Node's http.Server to the pure gateway handler in ./gateway.js.
- * It buffers the request body (up to a cap for MMS parts), calls handleRequest(), and writes back the
- * status/content-type/body the handler returns.
+ * HTTP layer that adapts Node's http.Server to the two pure handlers:
+ *   - /api/* and static assets under public/  -> web dashboard (webApi.js + static files)
+ *   - everything else (e.g. gateway.php)        -> multi-tenant gateway (gateway.js)
+ *
+ * The dashboard API returns JSON and may ask the server to set an httpOnly session cookie via the
+ * `setCookie` field of its result; that is turned into a Set-Cookie header here.
  */
 
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 const { createHandler } = require('./gateway');
+const { createWebApi } = require('./webApi');
+const config = require('./config');
 
-function send(res, status, contentType, body) {
-    res.writeHead(status, { 'Content-Type': contentType || 'text/plain' });
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const MAX_BODY = 64 * 1024 * 1024; // 64 MB cap to bound memory for MMS payloads
+
+var CONTENT_TYPES = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.ico': 'image/x-icon',
+    '.txt': 'text/plain; charset=utf-8'
+};
+
+function send(res, status, contentType, body, extraHeaders) {
+    var headers = Object.assign({ 'Content-Type': contentType || 'text/plain' }, extraHeaders || {});
+    res.writeHead(status, headers);
     res.end(body == null ? '' : String(body));
 }
 
-function createServer(deps) {
-    const handler = (deps && deps.handler) || createHandler();
-    const MAX_BODY = 64 * 1024 * 1024; // 64 MB cap to bound memory for large MMS payloads
+function sendError(res, status, message) {
+    send(res, status, 'text/plain', message || 'Error');
+}
 
-    return http.createServer(async (req, res) => {
+function contentTypeFor(filePath) {
+    return CONTENT_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+}
+
+/** Serve a file from public/, guarding against path traversal. Returns true if it sent something. */
+function serveStatic(res, urlPath) {
+    var rel = urlPath === '/' ? '/index.html' : urlPath.replace(/\/+$/, '');
+    var safeBase = PUBLIC_DIR.split(path.sep).join('/');
+    var filePath = path.normalize(path.join(PUBLIC_DIR, rel)).split(path.sep).join('/');
+    if (filePath !== safeBase && filePath.indexOf(safeBase + '/') !== 0) {
+        sendError(res, 403, 'Forbidden');
+        return true;
+    }
+    fs.readFile(filePath, function (err, data) {
+        if (err) { sendError(res, 404, 'Not found'); return; }
+        var cache = 'public, max-age=3600';
+        if (filePath.indexOf('/index.html') !== -1) cache = 'no-cache';
+        res.writeHead(200, { 'Content-Type': contentTypeFor(filePath), 'Cache-Control': cache });
+        res.end(data);
+    });
+    return true;
+}
+
+function readBody(req) {
+    return new Promise(function (resolve, reject) {
+        var chunks = [];
+        var size = 0;
+        req.on('data', function (chunk) {
+            size += chunk.length;
+            if (size > MAX_BODY) {
+                var err = Object.assign(new Error('Payload too large'), { statusCode: 413 });
+                req.destroy();
+                reject(err);
+                return;
+            }
+            chunks.push(chunk);
+        });
+        req.on('end', function () { resolve(Buffer.concat(chunks)); });
+        req.on('error', reject);
+    });
+}
+
+function createServer(deps) {
+    var gateway = (deps && deps.handler) || createHandler();
+    var webApi = (deps && deps.webApi) || createWebApi({ publicUrl: deps && deps.publicUrl });
+
+    return http.createServer(async function (req, res) {
         try {
             if (req.method !== 'POST' && req.method !== 'GET') {
-                send(res, 405, 'text/plain', 'Method Not Allowed');
+                sendError(res, 405, 'Method Not Allowed');
                 return;
             }
 
-            const chunks = [];
-            let size = 0;
-            await new Promise((resolve, reject) => {
-                req.on('data', (chunk) => {
-                    size += chunk.length;
-                    if (size > MAX_BODY) {
-                        req.destroy();
-                        const err = Object.assign(new Error('Payload too large'), { statusCode: 413 });
-                        reject(err);
-                        return;
-                    }
-                    chunks.push(chunk);
-                });
-                req.on('end', resolve);
-                req.on('error', reject);
-            });
+            var url = req.url;
+            var parsedUrl = new URL(url, 'http://localhost');
+            var pathname = parsedUrl.pathname;
 
-            const rawBody = Buffer.concat(chunks).toString('utf8');
-            const result = await handler.handleRequest({
-                url: req.url,
-                method: req.method,
-                headers: req.headers,
-                rawBody
-            });
+            // 1. Dashboard API (JSON in / JSON out, with session cookie).
+            if (pathname.indexOf('/api/') === 0) {
+                var rawBody = await readBody(req);
+                var text = rawBody.toString('utf8');
+                var bodyJson = null;
+                if (text) {
+                    try { bodyJson = JSON.parse(text); } catch (_) { bodyJson = null; }
+                }
+                var result = await webApi.handle({ url: url, method: req.method, headers: req.headers, bodyJson: bodyJson });
+                var extraHeaders = null;
+                if (result && result.setCookie) {
+                    var c = result.setCookie;
+                    var parts = c.name + '=' + encodeURIComponent(c.value);
+                    parts += '; Path=' + (c.path || '/');
+                    parts += '; HttpOnly';
+                    parts += '; SameSite=' + (c.sameSite || 'Lax');
+                    if (c.maxAgeSeconds != null) parts += '; Max-Age=' + c.maxAgeSeconds;
+                    if (c.secure) parts += '; Secure';
+                    extraHeaders = { 'Set-Cookie': parts };
+                }
+                send(res, result.status || 200, result.contentType || 'application/json', result.body, extraHeaders);
+                return;
+            }
 
+            // 2. Static dashboard assets.
+            if (req.method === 'GET' && (pathname === '/' || pathname.indexOf('/public/') === 0 || fs.existsSync(path.join(PUBLIC_DIR, pathname)))) {
+                serveStatic(res, pathname);
+                return;
+            }
+
+            // 3. Multi-tenant gateway (gateway.php etc.). readBody already returns a single Buffer.
+            var rawBody = (await readBody(req)).toString('utf8');
+            var result = await gateway.handleRequest({ url: url, method: req.method, headers: req.headers, rawBody: rawBody });
             send(res, result.status || 200, result.contentType, result.body);
         } catch (err) {
-            const status = err && err.statusCode ? err.statusCode : 500;
-            send(res, status, 'text/plain', 'Internal Server Error');
+            var status = err && err.statusCode ? err.statusCode : 500;
+            sendError(res, status, 'Internal Server Error');
             // eslint-disable-next-line no-console
             console.error('[gateway] request error:', err);
         }

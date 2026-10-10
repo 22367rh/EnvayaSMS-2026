@@ -16,6 +16,7 @@ the Android app is required**.
 - [Signature scheme (authentication)](#signature-schemeauthentication)
 - [Data model](#data-model)
 - [Endpoints & actions](#endpoints--actions)
+- [Web admin console](#web-admin-console)
 - [Quick start](#quick-start)
 - [Configuring the Android app](#configuring-the-android-app)
 - [Configuration reference](#configuration-reference)
@@ -142,6 +143,61 @@ version from the User-Agent header (matching the PHP `Request` class behavior).
 
 ---
 
+## Web admin console
+
+On top of the gateway API there is a tiny **zero-dependency single-page app** (vanilla JS + CSS, no
+framework) served from `public/`. It provides account registration/login, a dashboard that reveals the
+configuration a device needs to link to your gateway, and read-only analytics: battery history,
+message sent/received counts, an inbox/outbox, and per-number conversation timelines.
+
+```bash
+npm start                       # serves /api/* AND http://localhost:8080/ (the console)
+```
+
+Open <http://localhost:8080/> in a browser. Register an account, log in, and the **Dashboard** shows
+the device-linking configuration:
+
+| Field | Meaning |
+|-------|---------|
+| `server_url` | `/gateway.php?user=<username>` — paste into the app's *Server URL* (with the `?user=` suffix). |
+| `shared_secret` | The **device** signing key. Deliberately different from your login password. |
+
+> **The login password and the device shared secret are never the same value.** Registration generates a
+> random 24-char hex secret for devices; you can change your *login* password any time from Settings
+> without affecting the device secret.
+
+### API surface (all JSON, session via httpOnly cookie named `session`)
+
+| Method & path | Auth | Purpose |
+|---------------|------|---------|
+| `POST /api/register` | – | Create an account `{username,password}`. Sets the session cookie. |
+| `POST /api/login` | – | Sign in; sets the session cookie. |
+| `GET  /api/me` | ✔ | Current user profile (or 401). |
+| `POST /api/logout` | ✔ | Destroys the session and clears the cookie. |
+| `POST /api/change-password` | ✔ | Change only the login password (`currentPassword`,`newPassword`). Invalidates all sessions. |
+| `GET  /api/config` | ✔ | `{server_url, username, shared_secret}` for linking devices. |
+| `GET  /api/devices` | ✔ | Device registry (with last battery/network). |
+| `GET  /api/history` | ✔ | `{battery:[...], buckets:[...]}` — add `?range=24h|7d|30d|all` and optional `?device=<phone_id>`. Hourly buckets for spans ≤ 24 h, daily otherwise. |
+| `GET  /api/inbox` | ✔ | Incoming messages (`?sender=&limit=`). |
+| `GET  /api/outbox` | ✔ | Outgoing messages (`?to=&status=&limit=`). |
+| `GET  /api/conversations` | ✔ | Peer list with last-message summary. Click a peer → `/api/conversation?phone=<number>` for the date-ordered timeline across all devices. |
+
+Sessions live in an in-memory map (7-day TTL) and are destroyed on logout, password change, or when a
+password is changed elsewhere. Secrets are encrypted at rest with `GATEWAY_MASTER_KEY` (see below).
+
+### Static assets & security notes
+
+* `public/index.html`, `public/styles.css`, `public/app.js` are served from the same origin; `/`
+  maps to `index.html` and other paths serve files from `public/`. A path-traversal guard rejects any
+  request that would escape `public/`.
+* The session cookie is `HttpOnly`, `SameSite=Lax`, non-`Secure` (intentionally, so the console works
+  over plain HTTP on a LAN). For production behind TLS, set it secure by terminating TLS at a proxy and
+  reading the `X-Forwarded-Proto` header.
+* The dashboard is an admin/ops tool; it has **no** rate limiting or CSRF protection beyond the
+  httpOnly session cookie — treat it as internal.
+
+---
+
 ## Quick start
 
 ```bash
@@ -225,10 +281,14 @@ npm test        # integration tests: auth, every action, tenant isolation, at-re
 npm run smoke   # end-to-end over a real socket with independently-signed requests
 ```
 
-The integration suite (`test/gateway.test.js`) runs in its own process against throwaway temp
-databases and covers: signature verification (pinned to an independent reference), per-action behavior,
-**tenant isolation between two users**, rejection of wrong passwords / missing tenants / path traversal,
-and encrypted-at-rest secrets.
+The integration suites run each file in its own process against throwaway temp databases:
+
+* `test/gateway.test.js` — signature verification (pinned to an independent reference), per-action
+  behavior, **tenant isolation between two users**, rejection of wrong passwords / missing tenants /
+  path traversal, and encrypted-at-rest secrets.
+* `test/webApi.test.js` — account registration/login/logout, session cookies, password changes, the
+  device-configuration reveal (and that the secret differs from the login password), per-tenant
+  isolation of config, and the analytics endpoints on a fresh tenant.
 
 ---
 

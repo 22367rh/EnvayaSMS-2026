@@ -79,4 +79,5 @@ Each document below follows the same structure:
 12. [`12-data-settings-compatibility.md`](12-data-settings-compatibility.md) — preserve user settings & DB across the upgrade (SharedPreferences + schema v4→v5).
 13. [`13-testing-and-qa-gates.md`](13-testing-and-qa-gates.md) — test matrix, CI, manual verification checklist.
 14. [`14-server-node-multi-tenant-gateway.md`](14-server-node-multi-tenant-gateway.md) — zero-dependency multi-tenant Node.js gateway replacing `server/php` (Core.db + per-user `<user>.db`, byte-compatible signatures).
-15. [`99-summary-state-differences.md`](99-summary-state-differences.md) — full before/after state comparison + language note (the deliverable the task specifically asks for).
+15. [`15-web-console.md`](15-web-console.md) — dependency-free web admin console on top of the gateway: register/login, reveal device config (server_url/shared_secret), battery & message graphs, inbox/outbox, and conversation timelines.
+16. [`99-summary-state-differences.md`](99-summary-state-differences.md) — full before/after state comparison + language note (the deliverable the task specifically asks for).

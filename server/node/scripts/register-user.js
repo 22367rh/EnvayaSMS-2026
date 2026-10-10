@@ -12,7 +12,7 @@ const userDb = require('../src/userDb');
 const config = require('../src/config');
 
 function main() {
-    const [, , username, password, phoneNumber] = process.argv.slice(2);
+    const [username, password, phoneNumber] = process.argv.slice(2);
 
     if (!username || !password) {
         console.error('Usage: node scripts/register-user.js <username> <password> [phone_number]');
