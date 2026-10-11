@@ -4,7 +4,7 @@
  * Build a signed request the same way the Android app does, then print a ready-to-run curl command.
  * Useful for manual end-to-end testing of the gateway without the phone app.
  *
- *   node scripts/sign-request.js --url "http://host/gateway.php?user=XYZ" --password secret \
+ *   node scripts/sign-request.js --url "http://host/alice/gateway" --password secret \
  *        --field action=incoming --field from=15551230000 --field message="hi there"
  */
 
@@ -27,7 +27,7 @@ function main() {
     const { url, password, fields } = parseArgs(process.argv);
 
     if (!url || !password) {
-        console.error('Usage: sign-request.js --url "<gatewayUrl?user=XYZ>" --password "<secret>" [--field name=value]...');
+        console.error('Usage: sign-request.js --url "<http://host/<user>/gateway>" --password "<secret>" [--field name=value]...');
         process.exit(1);
     }
 

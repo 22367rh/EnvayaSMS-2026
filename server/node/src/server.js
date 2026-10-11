@@ -57,13 +57,34 @@ function serveStatic(res, urlPath) {
         return true;
     }
     fs.readFile(filePath, function (err, data) {
-        if (err) { sendError(res, 404, 'Not found'); return; }
-        var cache = 'public, max-age=3600';
-        if (filePath.indexOf('/index.html') !== -1) cache = 'no-cache';
-        res.writeHead(200, { 'Content-Type': contentTypeFor(filePath), 'Cache-Control': cache });
-        res.end(data);
+        if (err) {
+            // Bare SPA route with no extension (e.g. /console) -> fall back to <route>.html.
+            if (!/\.[a-zA-Z0-9]+$/.test(filePath)) {
+                filePath = filePath + '.html';
+                return fs.readFile(filePath, function (err2, data2) {
+                    if (err2) { sendError(res, 404, 'Not found'); return; }
+                    finishStatic(res, filePath, data2);
+                });
+            }
+            sendError(res, 404, 'Not found');
+            return;
+        }
+        finishStatic(res, filePath, data);
     });
     return true;
+}
+
+function finishStatic(res, file, data) {
+    var cache = 'public, max-age=3600';
+    if (file.indexOf('/index.html') !== -1) cache = 'no-cache';
+    res.writeHead(200, { 'Content-Type': contentTypeFor(file), 'Cache-Control': cache });
+    res.end(data);
+}
+
+// True when a GET for this path can be served from disk — either the exact file or a <path>.html SPA shell.
+function staticAssetExists(pn) {
+    if (fs.existsSync(path.join(PUBLIC_DIR, pn))) return true;
+    return !/\.[a-zA-Z0-9]+$/.test(pn) && fs.existsSync(path.join(PUBLIC_DIR, pn + '.html'));
 }
 
 function readBody(req) {
@@ -97,6 +118,10 @@ function createServer(deps) {
             }
 
             var url = req.url;
+
+            // No favicon on an internal ops console — answer 204 so browsers stop requesting it.
+            if (url === '/favicon.ico') { send(res, 204, 'image/x-icon', ''); return; }
+
             var parsedUrl = new URL(url, 'http://localhost');
             var pathname = parsedUrl.pathname;
 
@@ -125,7 +150,7 @@ function createServer(deps) {
             }
 
             // 2. Static dashboard assets.
-            if (req.method === 'GET' && (pathname === '/' || pathname.indexOf('/public/') === 0 || fs.existsSync(path.join(PUBLIC_DIR, pathname)))) {
+            if (req.method === 'GET' && (pathname.indexOf('/public/') === 0 || staticAssetExists(pathname))) {
                 serveStatic(res, pathname);
                 return;
             }

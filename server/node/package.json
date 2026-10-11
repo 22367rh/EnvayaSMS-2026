@@ -13,6 +13,8 @@
     "send": "node scripts/send-message.js",
     "sign": "node scripts/sign-request.js",
     "smoke": "node scripts/e2e-smoke.js",
+    "e2e-console": "node scripts/e2e-console.js",
+    "e2e": "npm run smoke && npm run e2e-console",
     "test": "node --test"
   },
   "keywords": [

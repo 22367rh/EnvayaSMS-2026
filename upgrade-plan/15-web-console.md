@@ -32,8 +32,10 @@ credentials, and answer "why isn't my message sending?" from a browser.
 
 A single Node process serves **both**:
 
-1. `/gateway.php` — the existing app protocol (unchanged, byte-compatible).
-2. `/` and `/api/*` — a dependency-free SPA plus JSON API for account management and read-only analytics.
+1. `/<user>/gateway` — the existing app protocol (unchanged, byte-compatible). The tenant is selected from
+   the path segment, so the signed request URL is exactly the Server URL configured on the device.
+2. `/` — a public, unauthenticated landing page describing how the gateway works and how to link devices.
+3. `/console` — a dependency-free SPA plus JSON API (`/api/*`) for account management and read-only analytics.
 
 The two are isolated: the gateway authenticates by request signature; the console authenticates by
 httpOnly session cookie. A tenant's data is only ever visible to that tenant's own logged-in operator.
@@ -222,3 +224,20 @@ socket plumbing and cookie round-trip.
 * Consider adding rate limiting and CSRF protection for production hardening (currently only the httpOnly
   session cookie is used).
 * For multi-instance deployments, back `accounts.js` with Redis/memcached instead of the in-memory map.
+
+---
+
+## Follow-up iteration — console UX hardening
+
+After Stage 15 shipped, operator feedback surfaced five concrete problems. All are fixed:
+
+| # | Reported problem | Fix |
+|---|------------------|-----|
+| 1 | No way back to the home page from login/register. | Added a **← Back to home** link (links to `/`, the public landing page) on the auth shell. |
+| 2 | Login showed both *Password* and *Current password*. | Removed the stray "Current password" row; login now asks only for username + password. The change-password field lives solely in Settings. |
+| 3 | Registration had no confirm-password. | Added a **Confirm password** field; registration is rejected client-side if it does not match the password. |
+| 4 | No email / primary contact number collected. | Registration now collects optional **email** + **primary contact number**. Backend: `Core.db` users table gained an `email` column (with idempotent migration via `ensureColumn`); `createAccount`/`createUser` store it; `/api/register` validates the email shape and passes both through; `/api/me` echoes them. |
+| 5 | Dashboard was blank after login — even the *Show Device Connection Details* control was missing. | Rewrote `dashboardView()` to build its cards in order (the old code queried a `.sub` element that did not exist yet, got `null`, and threw before rendering anything). The card now carries a clear **Show device connection details** toggle that reveals server URL / username / shared secret. |
+
+Tests: added two webApi tests covering email/phone persistence + malformed-email rejection (24/24 unit
+tests pass); the console e2e (`scripts/e2e-console.js`, 13 checks) still passes end to end.

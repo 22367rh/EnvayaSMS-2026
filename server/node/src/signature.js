@@ -9,10 +9,11 @@
  *     signature = Base64( SHA1( url + "," + sortedParams + "," + password ) )
  *
  * where:
- *   - `url`            is the full request URL (protocol://host/path?query) — i.e. exactly what the
- *                      client configured as its Server URL, INCLUDING any ?user=<tenant> query string.
+ *   - `url`            is the full request URL (protocol://host/path) — i.e. exactly what the client
+ *                      configured as its Server URL, e.g. "http://host/<user>/gateway". The tenant lives
+ *                      in the path, so there is no query string to append.
  *   - `sortedParams`   are ALL form fields of the POST body, sorted ascending by field name, joined as
- *                      ",name=value". The query-string tenant (user=) is part of `url`, not a param.
+ *                      ",name=value".
  *   - `password`       is the tenant's shared secret (the app's "password" setting).
  *
  * This mirrors PHP's ksort($data) + concatenation and sha1(..., true) + base64_encode() exactly:
@@ -31,7 +32,7 @@ function compareKeys(a, b) {
 
 /**
  * Compute the expected signature string for the given URL + body params + password.
- * @param {string} url full request URL incl. query string, e.g. "http://host/gateway.php?user=XYZ"
+ * @param {string} url full request URL, e.g. "http://host/XYZ/gateway"
  * @param {Object<string,string>} params decoded form fields (like $_POST), NOT including the tenant
  * @param {string} password shared secret
  * @returns {string} base64(sha1(raw)) signature

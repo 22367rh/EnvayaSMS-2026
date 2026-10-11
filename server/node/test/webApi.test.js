@@ -62,6 +62,33 @@ test('duplicate registration is rejected 409', async () => {
     assert.strictEqual(again.status, 409);
 });
 
+// --- registration profile fields (email / primary contact) ------------------------------------
+test('registration stores and returns email + primary contact number', async () => {
+    const u = 'prof_' + Date.now().toString(36);
+    const r = await api.handle({ url: '/api/register', method: 'POST', headers: {}, bodyJson: {
+        username: u, password: 'hunter2x', email: 'alice@example.com', phone_number: '+15551230000'
+    } });
+    assert.strictEqual(r.status, 201, 'register should succeed');
+    const user = JSON.parse(r.body).user;
+    assert.strictEqual(user.email, 'alice@example.com', 'email round-trips through /api/register -> /api/me');
+    assert.strictEqual(user.phone_number, '+15551230000', 'phone round-trips too');
+
+    // It is persisted in Core.db (not just echoed back).
+    const row = coreDb.getUserByUsername(u);
+    assert.strictEqual(row.email, 'alice@example.com');
+    assert.strictEqual(row.phone_number, '+15551230000');
+});
+
+test('registration rejects a malformed email but allows empty contact fields', async () => {
+    const bad = 'bademail_' + Date.now().toString(36);
+    const br = await api.handle({ url: '/api/register', method: 'POST', headers: {}, bodyJson: { username: bad, password: 'hunter2x', email: 'not-an-email' } });
+    assert.strictEqual(br.status, 400, 'malformed email should be rejected');
+
+    const oku = 'okcontact_' + Date.now().toString(36);
+    const orr = await api.handle({ url: '/api/register', method: 'POST', headers: {}, bodyJson: { username: oku, password: 'hunter2x' } });
+    assert.strictEqual(orr.status, 201, 'empty contact fields should be allowed');
+});
+
 test('short password is rejected at registration', async () => {
     const r = await register('shortpw_' + Date.now().toString(36), '123');
     assert.strictEqual(r.status, 400);
@@ -122,7 +149,7 @@ test('config reveals server_url/username and a secret distinct from the login pa
     const cfgRes = await api.handle({ url: '/api/config', method: 'GET', headers: { cookie: reg.cookie }, bodyJson: {} });
     assert.strictEqual(cfgRes.status, 200);
     const cfg = JSON.parse(cfgRes.body);
-    assert.ok(/gateway\.php\?user=/.test(cfg.server_url), 'server_url should route by username');
+    assert.ok(new RegExp('/' + u + '/gateway$').test(cfg.server_url), 'server_url should be /<user>/gateway');
     assert.strictEqual(cfg.username, u);
     assert.notStrictEqual(cfg.shared_secret, 'hunter2x', 'device secret must differ from login password');
     // The stored (encrypted) value decrypts to the revealed secret.

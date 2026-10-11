@@ -37,6 +37,9 @@ h2 { font-size: 17px; margin-top: 28px; }
 .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 28px; width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(15,23,42,.08); }
 .card h1 { font-size: 22px; margin-bottom: 4px; }
+/* Back-to-home link on the auth shell — subtle, keeps operators from being trapped in login. */
+.home-link { text-align: center; margin-top: 16px; }
+.home-link a:hover { color: #334155 !important; text-decoration: underline !important; }
 .tabs { display: flex; gap: 8px; margin: 18px 0; }
 .tabs button { flex: 1; padding: 9px; border: 1px solid var(--border); background: #fff; border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--muted); }
 .tabs button.active { background: var(--brand); color: #fff; border-color: var(--brand); }

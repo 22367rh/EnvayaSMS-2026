@@ -81,7 +81,7 @@ test('signature: known-answer vector matches the documented algorithm', () => {
 });
 
 test('test action returns empty events for a valid tenant', async () => {
-    const res = await doRequest({ url: '/gateway.php?user=XYZ', params: { version: '30', action: 'test' }, password: 'rosebud' });
+    const res = await doRequest({ url: '/XYZ/gateway', params: { version: '30', action: 'test' }, password: 'rosebud' });
     assert.strictEqual(res.status, 200);
     assert.match(res.contentType, /application\/json/);
     assert.deepStrictEqual(jsonOf(res).events, []);
@@ -92,7 +92,7 @@ test('incoming SMS is stored in the tenant DB and returns a response', async () 
         version: '30', action: 'incoming', phone_number: '15550000001',
         from: '15551230000', message_type: 'sms', message: 'Hello XYZ', timestamp: '1800000000000'
     };
-    const res = await doRequest({ url: '/gateway.php?user=XYZ', params, password: 'rosebud' });
+    const res = await doRequest({ url: '/XYZ/gateway', params, password: 'rosebud' });
     assert.strictEqual(res.status, 200);
     const db = userDb.openUserDb('XYZ');
     const rows = db.prepare('SELECT * FROM incoming_messages WHERE sender = ?').all('15551230000');
@@ -104,7 +104,7 @@ test('incoming SMS is stored in the tenant DB and returns a response', async () 
 test('poll (outgoing) returns queued messages as a send event', async () => {
     const db = userDb.openUserDb('XYZ');
     userDb.enqueueOutgoing(db, { to: '15559998888', message: 'Server says hi', priority: 5 });
-    const res = await doRequest({ url: '/gateway.php?user=XYZ', params: { version: '30', action: 'outgoing' }, password: 'rosebud' });
+    const res = await doRequest({ url: '/XYZ/gateway', params: { version: '30', action: 'outgoing' }, password: 'rosebud' });
     assert.strictEqual(res.status, 200);
     const events = jsonOf(res).events;
     assert.strictEqual(events.length, 1);
@@ -114,7 +114,7 @@ test('poll (outgoing) returns queued messages as a send event', async () => {
     const serverId = events[0].messages[0].id;
 
     // send_status transitions the message out of queued and is recorded.
-    await doRequest({ url: '/gateway.php?user=XYZ', params: { version: '30', action: 'send_status', id: serverId, status: 'sent' }, password: 'rosebud' });
+    await doRequest({ url: '/XYZ/gateway', params: { version: '30', action: 'send_status', id: serverId, status: 'sent' }, password: 'rosebud' });
     const msg = userDb.getOutgoingById(db, serverId);
     assert.strictEqual(msg.status, 'sent');
     const logRows = db.prepare('SELECT COUNT(*) AS c FROM send_status_log WHERE server_id = ?').get(serverId);
@@ -123,7 +123,7 @@ test('poll (outgoing) returns queued messages as a send event', async () => {
 
 test('device_status records telemetry', async () => {
     await doRequest({
-        url: '/gateway.php?user=XYZ',
+        url: '/XYZ/gateway',
         params: { version: '30', action: 'device_status', phone_id: 'dev-xyz-1', battery: '87', power: '1', network: 'WIFI' },
         password: 'rosebud'
     });
@@ -149,7 +149,7 @@ test('MMS forward parses text fields and stores binary parts', async () => {
         `Content-Type: text/plain\r\n\r\npart-one-content\r\n` +
         `--${boundary}--\r\n`;
 
-    const fullUrl = 'http://localhost/gateway.php?user=XYZ';
+    const fullUrl = 'http://localhost/XYZ/gateway';
     // The binary part must NOT be in the signature params; only the text fields are.
     const sigParams = { action: 'incoming', from: '15551112222', message: 'MMS body text', message_type: 'mms' };
     const headers = {
@@ -157,7 +157,7 @@ test('MMS forward parses text fields and stores binary parts', async () => {
         host: 'localhost',
         'x-request-signature': signature.computeSignature(fullUrl, sigParams, 'rosebud')
     };
-    const res = await handler.handleRequest({ url: '/gateway.php?user=XYZ', method: 'POST', headers, rawBody: body });
+    const res = await handler.handleRequest({ url: '/XYZ/gateway', method: 'POST', headers, rawBody: body });
     assert.strictEqual(res.status || 200, 200);
     const row = userDb.openUserDb('XYZ').prepare("SELECT * FROM incoming_messages WHERE message_type='mms' AND sender='15551112222'").get();
     assert.ok(row, 'MMS row should be stored');
@@ -171,7 +171,7 @@ test('tenant isolation: ABC cannot read or write XYZ data', async () => {
     userDb.enqueueOutgoing(userDb.openUserDb('XYZ'), { to: '15550001111', message: 'secret for xyz' });
 
     // ABC poll returns nothing queued.
-    const res = await doRequest({ url: '/gateway.php?user=ABC', params: { version: '30', action: 'outgoing' }, password: 'otherpass' });
+    const res = await doRequest({ url: '/ABC/gateway', params: { version: '30', action: 'outgoing' }, password: 'otherpass' });
     assert.deepStrictEqual(jsonOf(res).events, []);
 
     // ABC's DB has no incoming messages; XYZ's does.
@@ -182,23 +182,26 @@ test('tenant isolation: ABC cannot read or write XYZ data', async () => {
 });
 
 test('wrong password is rejected (403)', async () => {
-    const res = await doRequest({ url: '/gateway.php?user=XYZ', params: { version: '30', action: 'test' }, password: 'WRONG' });
+    const res = await doRequest({ url: '/XYZ/gateway', params: { version: '30', action: 'test' }, password: 'WRONG' });
     assert.strictEqual(res.status, 403);
     assert.deepStrictEqual(jsonOf(res), { error: { message: 'Invalid password' } });
 });
 
-test('missing tenant is rejected (403)', async () => {
-    const res = await doRequest({ url: '/gateway.php', params: { version: '30', action: 'test' }, password: 'rosebud' });
+test('missing/invalid gateway path is rejected (403)', async () => {
+    // No <user> segment -> does not match /<user>/gateway.
+    const res = await doRequest({ url: '/gateway', params: { version: '30', action: 'test' }, password: 'rosebud' });
     assert.strictEqual(res.status, 403);
 });
 
 test('path-traversal tenant name is rejected (403)', async () => {
-    const res = await doRequest({ url: '/gateway.php?user=../../etc', params: { version: '30', action: 'test' }, password: 'x' });
+    // URL parsing normalises "../" so this resolves to /secret/gateway -> tenant "secret", which is not
+    // a registered user. The path-based scheme cannot inject path separators into the username.
+    const res = await doRequest({ url: '/../secret/gateway', params: { version: '30', action: 'test' }, password: 'rosebud' });
     assert.strictEqual(res.status, 403);
 });
 
 test('unknown action returns the documented unsupported-action error', async () => {
-    const res = await doRequest({ url: '/gateway.php?user=XYZ', params: { version: '30', action: 'nope' }, password: 'rosebud' });
+    const res = await doRequest({ url: '/XYZ/gateway', params: { version: '30', action: 'nope' }, password: 'rosebud' });
     assert.strictEqual(res.status, 404);
     assert.match(jsonOf(res).error.message, /does not support/);
 });

@@ -65,7 +65,7 @@ function createWebApi(deps) {
 
     function userPayload(row) {
         if (!row) return null;
-        return { id: row.id, username: row.username, phone_number: row.phone_number || '', created_at: row.created_at || '' };
+        return { id: row.id, username: row.username, phone_number: row.phone_number || '', email: row.email || '', created_at: row.created_at || '' };
     }
 
     // --- routes ------------------------------------------------------------------------------
@@ -76,10 +76,15 @@ function createWebApi(deps) {
         if (!config.isValidUsername(username)) return fail(400, 'Invalid username.');
         if (password.length < MIN_PASSWORD_LENGTH) return fail(400, 'Password must be at least ' + MIN_PASSWORD_LENGTH + ' characters.');
 
+        // Optional primary contact details. Email is validated only when provided; either may be empty.
+        var email = body && body.email ? String(body.email).trim() : '';
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(400, 'Invalid email address.');
+        var phoneNumber = body && body.phone_number ? String(body.phone_number).trim() : '';
+
         // The device shared secret is generated independently and is always different from the login password.
         var sharedSecret = crypto.randomBytes(12).toString('hex');
         try {
-            core.createAccount({ username: username, password: password, sharedSecret: sharedSecret });
+            core.createAccount({ username: username, password: password, sharedSecret: sharedSecret, email: email, phoneNumber: phoneNumber });
         } catch (err) {
             if (err.code === 'USER_EXISTS') return fail(409, 'That username is already taken.');
             throw err;
@@ -137,7 +142,7 @@ function createWebApi(deps) {
         var row = core.getUserByUsername(username);
         if (!row) throw new AuthError(404, 'Unknown user.');
         var sharedSecret = decryptSecret(row.password_enc);
-        var serverUrl = originFrom(headers) + '/gateway.php?user=' + encodeURIComponent(username);
+        var serverUrl = originFrom(headers) + '/' + username + '/gateway';
         return ok(200, {
             server_url: serverUrl,
             username: username,

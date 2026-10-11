@@ -100,66 +100,88 @@ function renderLanding() {
     var mode = { value: 'login' };
     var errBox = el('div', { class: 'msg error' });
     var okBox = el('div', { class: 'msg ok' });
+    // The <h1> heading is a live element reference (not a string) so setMode() can update it.
+    var formTitleEl = el('h1', null, 'Log in');
+
+    function showErr(msg) { errBox.className = 'msg error show'; okBox.className = 'msg ok'; errBox.textContent = msg; }
+    function clearMsg() { errBox.className = 'msg error'; okBox.className = 'msg ok'; errBox.textContent = ''; okBox.textContent = ''; }
+
+    // Inputs declared up front so both setMode() and onSubmit() can close over them.
+    var username = el('input', { type: 'text', name: 'username', placeholder: 'Username', autocomplete: 'username' });
+    var password = el('input', { type: 'password', name: 'password', placeholder: 'Password', autocomplete: 'current-password' });
+    var confirmPassword = el('input', { type: 'password', name: 'confirmPassword', placeholder: 'Confirm password', autocomplete: 'new-password' });
+    var email = el('input', { type: 'email', name: 'email', placeholder: 'Email (optional)', autocomplete: 'email' });
+    var phone = el('input', { type: 'tel', name: 'phone', placeholder: 'Primary contact number (optional)', autocomplete: 'tel' });
+
+    // Registration-only fields. Hidden on the login view so it only asks for what it needs.
+    var regOnly = el('div', {}, [
+        el('label', null, 'Confirm password'), confirmPassword,
+        el('label', null, 'Email (optional)'), email,
+        el('label', null, 'Primary contact number (optional)'), phone
+    ]);
 
     function setMode(m) {
         mode.value = m;
         loginTab.classList.toggle('active', m === 'login');
         regTab.classList.toggle('active', m === 'register');
-        formTitle.textContent = m === 'login' ? 'Log in' : 'Create account';
-        curPwRow.style.display = m === 'login' ? '' : 'none';
+        formTitleEl.textContent = m === 'login' ? 'Log in' : 'Create account';
+        submitBtn.textContent = m === 'login' ? 'Log in' : 'Create account';
+        // Registration-only fields are shown only while registering.
+        regOnly.style.display = m === 'register' ? '' : 'none';
     }
 
-    var currentPw = el('input', { type: 'password', name: 'currentPassword', placeholder: 'Current password', autocomplete: 'current-password' });
-    var username = el('input', { type: 'text', name: 'username', placeholder: 'Username', autocomplete: 'username' });
-    var password = el('input', { type: 'password', name: 'password', placeholder: 'Password', autocomplete: 'current-password' });
-
-    var curPwRow = el('div', { id: 'curPwRow', style: 'display:none' }, [el('label', null, 'Current password'), currentPw]);
+    var loginTab, regTab, submitBtn;
     var form = el('form', { onsubmit: onSubmit }, [
         el('div', { class: 'tabs' }, [
             loginTab = el('button', { type: 'button', class: 'active' }, 'Log in'),
             regTab = el('button', { type: 'button' }, 'Register')
         ]),
         el('div', { class: 'card', style: 'box-shadow:none;padding:0;border:none' }, [
-            el('h1', null, formTitle = 'Log in'),
+            formTitleEl,
             errBox, okBox,
             el('label', null, 'Username'), username,
             el('label', null, 'Password'), password,
-            curPwRow,
-            el('button', { type: 'submit', class: 'btn', style: 'width:100%;margin-top:8px' }, m = 'Log in')
+            regOnly,
+            submitBtn = el('button', { type: 'submit', class: 'btn', style: 'width:100%;margin-top:8px' }, 'Log in')
         ])
     ]);
 
-    var loginTab, regTab, formTitle, m;
-    loginTab && setMode('login');
-    if (!loginTab) { loginTab = form.querySelectorAll('button')[0]; regTab = form.querySelectorAll('button')[1]; }
-
     async function onSubmit(e) {
         e.preventDefault();
-        errBox.className = 'msg error'; okBox.className = 'msg ok';
-        errBox.textContent = '';
+        clearMsg();
+        var uname = username.value.trim();
         try {
             if (mode.value === 'login') {
-                var r = await api('/api/login', 'POST', { username: username.value.trim(), password: password.value });
+                if (!password.value) { showErr('Enter your password.'); return; }
+                var r = await api('/api/login', 'POST', { username: uname, password: password.value });
                 state.user = r.user;
                 location.hash = '#/dashboard'; render();
             } else {
-                await api('/api/register', 'POST', { username: username.value.trim(), password: password.value });
-                state.user = { username: username.value.trim() };
+                if (password.value !== confirmPassword.value) { showErr('Passwords do not match.'); return; }
+                await api('/api/register', 'POST', {
+                    username: uname,
+                    password: password.value,
+                    email: email.value.trim(),
+                    phone_number: phone.value.trim()
+                });
+                state.user = { username: uname };
                 okBox.textContent = 'Account created — welcome!'; okBox.className = 'msg ok show';
-                setTimeout(function () { location.hash = '#/dashboard'; render(); }, 500);
+                setTimeout(function () { location.hash = '#/dashboard'; render(); }, 600);
             }
-        } catch (err) { errBox.textContent = err.message; errBox.className = 'msg error show'; }
+        } catch (err) { showErr(err.message); }
     }
 
-    setMode('login');
-    loginTab.addEventListener('click', function () { setMode('login'); });
-    regTab.addEventListener('click', function () { setMode('register'); });
+    loginTab.addEventListener('click', function () { clearMsg(); setMode('login'); });
+    regTab.addEventListener('click', function () { clearMsg(); setMode('register'); });
 
     var wrap = el('div', { class: 'auth-wrap' }, [
-        el('div', { class: 'card' }, [
+        el('div', { class: 'card auth-card' }, [
             el('h1', null, 'EnvayaSMS'),
             el('p', { class: 'sub', style: 'margin-top:-8px' }, 'Gateway console — sign in to manage your devices.'),
-            form
+            form,
+            el('div', { class: 'home-link' }, [
+                el('a', { href: '/', style: 'color:#64748b;font-size:13px;text-decoration:none' }, '← Back to home')
+            ])
         ])
     ]);
     $('#app').innerHTML = '';
@@ -211,20 +233,27 @@ async function copyText(node, text) {
 
 // --- dashboard -------------------------------------------------------------------------------
 async function dashboardView(view) {
-    view.appendChild(el('h1', null, 'Dashboard'));
-    var status = el('div', { class: 'muted' }, 'Loading…');
-    view.appendChild(status);
+    var h1 = el('h1', null, 'Dashboard');
+    view.appendChild(h1);
 
     try {
         var cfg = await currentConfig();
         var devices = (await apiGet('/api/devices')).devices || [];
 
+        // "Show device connection details" toggle reveals server URL / username / shared secret.
         var secretVisible = false;
         var secretEl = el('code', null, '••••••••');
         function refreshSecret() { secretEl.textContent = secretVisible ? cfg.shared_secret : '••••••••'; }
 
+        var revealBtn = el('button', { class: 'btn small secondary' }, 'Show device connection details');
+        revealBtn.addEventListener('click', function () {
+            secretVisible = !secretVisible;
+            revealBtn.textContent = secretVisible ? 'Hide connection details' : 'Show device connection details';
+            refreshSecret();
+        });
+
         var configCard = el('div', { class: 'panel' }, [
-            el('div', { class: 'spread' }, [el('h2', null, 'Device configuration'), el('button', { class: 'btn small secondary', id: 'revealBtn' }, secretVisible ? 'Hide' : 'Show')]),
+            el('div', { class: 'spread' }, [el('h2', null, 'Device configuration'), revealBtn]),
             el('p', { class: 'sub', style: 'margin-top:4px' }, 'Put these in your EnvayaSMS app settings. The shared secret is the key devices use to sign requests.'),
             fieldRow('Server URL', el('code', null, cfg.server_url)),
             fieldRow('Username', el('code', null, cfg.username)),
@@ -235,8 +264,7 @@ async function dashboardView(view) {
         var statsCard = el('div', { class: 'panel' }, [
             el('h2', null, 'Quick stats'),
             el('div', { class: 'grid' }, [
-                kpi(devices.length, 'Devices online-ish'),
-                kpi((await apiGet('/api/inbox?limit=1')).messages.length >= 0 ? '—' : '0', ''),
+                kpi(devices.length, 'Devices linked'),
                 kpi(describeStatus(devices), 'Last battery')
             ])
         ]);
@@ -248,19 +276,12 @@ async function dashboardView(view) {
             linkCard('Conversations', 'Chat-style view per number', '#/conversations')
         ]);
 
-        function draw() { view.innerHTML = ''; view.appendChild(h1); view.appendChild(sub); view.appendChild(configCard); view.appendChild(statsCard); view.appendChild(links); refreshSecret(); }
-
-        var h1 = $('h1', view), sub = $('.sub', view);
-        draw();
-
-        $('#revealBtn').addEventListener('click', function () {
-            secretVisible = !secretVisible;
-            $('#revealBtn').textContent = secretVisible ? 'Hide' : 'Show';
-            refreshSecret();
-        });
+        // Append once, in order. No query-then-reappend dance (which previously nulled out the sub line).
+        view.appendChild(configCard);
+        view.appendChild(statsCard);
+        view.appendChild(links);
     } catch (err) {
-        status.className = 'msg error show';
-        status.textContent = err.message || 'Could not load dashboard.';
+        view.appendChild(el('div', { class: 'msg error show' }, err.message || String(err)));
     }
 }
 

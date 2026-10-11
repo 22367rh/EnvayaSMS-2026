@@ -65,13 +65,15 @@ function getDb() {
             username      TEXT NOT NULL UNIQUE,
             password_enc  TEXT NOT NULL,          -- AES-GCM(encrypted shared secret) or plaintext if no master key
             password_hash TEXT NOT NULL DEFAULT '', -- scrypt hash of the WEBSITE login password (distinct from the device secret)
-            phone_number  TEXT DEFAULT '',
+            phone_number  TEXT DEFAULT '',          -- primary contact number for this tenant
+            email         TEXT DEFAULT '',          -- primary contact email for this tenant
             created_at    TEXT NOT NULL DEFAULT (datetime('now')),
             active        INTEGER NOT NULL DEFAULT 1
         );
     `);
     // One-time migration for databases created before the website-login split existed.
     ensureColumn(db, 'users', 'password_hash', "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(db, 'users', 'email', "TEXT NOT NULL DEFAULT ''");
     db.exec(`
         CREATE TABLE IF NOT EXISTS sessions (
             token      TEXT PRIMARY KEY,
@@ -92,7 +94,7 @@ function ensureColumn(db, table, col, ddl) {
 }
 
 /** Insert a new user. Throws if the username already exists. */
-function createUser(username, passwordPlaintext, phoneNumber) {
+function createUser(username, passwordPlaintext, phoneNumber, email) {
     const users = getDb().prepare('SELECT id FROM users WHERE username = ?').get(username);
     if (users) {
         throw Object.assign(new Error(`User "${username}" already exists`), { code: 'USER_EXISTS' });
@@ -101,8 +103,8 @@ function createUser(username, passwordPlaintext, phoneNumber) {
     // same value (hashed) while the device signing secret is the encrypted copy; they can later be
     // diverged with /api/change-password, which only touches the login credential.
     const info = getDb()
-        .prepare('INSERT INTO users (username, password_enc, password_hash, phone_number) VALUES (?, ?, ?, ?)')
-        .run(username, encryptSecret(passwordPlaintext), hashPassword(passwordPlaintext), phoneNumber || '');
+        .prepare('INSERT INTO users (username, password_enc, password_hash, phone_number, email) VALUES (?, ?, ?, ?, ?)')
+        .run(username, encryptSecret(passwordPlaintext), hashPassword(passwordPlaintext), phoneNumber || '', email || '');
     return getUserById(info.lastInsertRowid);
 }
 
@@ -127,14 +129,14 @@ function getUserRowForAuth(username) {
  * Create a website account. The login `password` is hashed (never stored); `sharedSecret` is the
  * device signing key and is encrypted at rest. They are intentionally independent values.
  */
-function createAccount({ username, password, sharedSecret, phoneNumber }) {
+function createAccount({ username, password, sharedSecret, phoneNumber, email }) {
     const users = getDb().prepare('SELECT id FROM users WHERE username = ?').get(username);
     if (users) {
         throw Object.assign(new Error(`User "${username}" already exists`), { code: 'USER_EXISTS' });
     }
     const info = getDb()
-        .prepare('INSERT INTO users (username, password_enc, password_hash, phone_number) VALUES (?, ?, ?, ?)')
-        .run(username, encryptSecret(sharedSecret), hashPassword(password), phoneNumber || '');
+        .prepare('INSERT INTO users (username, password_enc, password_hash, phone_number, email) VALUES (?, ?, ?, ?, ?)')
+        .run(username, encryptSecret(sharedSecret), hashPassword(password), phoneNumber || '', email || '');
     return getUserById(info.lastInsertRowid);
 }
 

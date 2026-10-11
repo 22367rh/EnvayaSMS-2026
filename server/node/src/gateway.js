@@ -4,9 +4,9 @@
  * Gateway request handler — the heart of the multi-tenant server.
  *
  * For every request it:
- *   1. Parses the tenant (username) from the URL query string (?user=<tenant>). This is what makes a
- *      single server serve many isolated tenants, and keeping it in the URL also keeps it inside the
- *      signed request so no client change is required.
+ *   1. Parses the tenant (username) from the request path `/<user>/gateway`. Carrying the username in
+ *      the path — rather than a `?user=` query param — keeps the signed URL clean: the app signs exactly
+ *      the server_url it is configured with, with no extra query string to append.
  *   2. Verifies the X-Request-Signature header against Base64(SHA1(url + sortedParams + secret)).
  *   3. Routes to the tenant's own database for all messaging/device persistence.
  *   4. Returns a JSON (version >= 28) or XML response, byte-compatible with server/php/EnvayaSMS.php.
@@ -144,7 +144,15 @@ function createHandler(deps) {
 
     async function handleRequest({ url, method = 'POST', headers = {}, rawBody = '' }) {
         const parsedUrl = new URL(url, 'http://localhost');
-        const tenant = parsedUrl.searchParams.get('user');
+
+        // Tenant is the first path segment of /<user>/gateway (e.g. POST /alice/gateway). Keeping it in
+        // the path means the app signs exactly its configured server_url with no query string to append.
+        const segments = parsedUrl.pathname.split('/').filter(Boolean);
+        let tenant = null;
+        if (segments.length === 2 && segments[1] === 'gateway') {
+            const candidate = segments[0];
+            if (config.isValidUsername(candidate)) tenant = candidate;
+        }
 
         // 1. Parse body (form or multipart) into decoded params (+ file parts for multipart).
         const contentType = String(headers['content-type'] || '');
@@ -162,8 +170,8 @@ function createHandler(deps) {
         const providedSignature = headers[headerName] || headers['x-request-signature'] || '';
 
         // 2. Tenant must be present, well-formed, and authenticated before any DB access.
-        if (!tenant || !config.isValidUsername(tenant)) {
-            return Object.assign(responses.renderError('Missing or invalid ?user= tenant', version), { status: 403 });
+        if (!tenant) {
+            return Object.assign(responses.renderError('Missing or invalid /<user>/gateway path', version), { status: 403 });
         }
         const userRow = core.getUserByUsername(tenant);
         if (!userRow) {

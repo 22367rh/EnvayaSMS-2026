@@ -55,17 +55,19 @@ constant-time-ish lookup and return the same `"Invalid password"` response regar
 enumeration. The plaintext is only ever materialized briefly to compute the SHA1 signature, then
 discarded.
 
-### Username routing (zero client changes)
+### Username routing (path-based, zero client changes)
 
-The username is carried in the **URL query string**, e.g.:
+The username is carried in the **request path**, e.g.:
 
 ```
-POST http://gateway.example/gateway.php?user=XYZ
+POST http://gateway.example/XYZ/gateway
 ```
 
-Because the Android app signs the *entire* URL (query string included), appending `?user=XYZ` to the
-configured server URL requires **no code change** and no protocol change. The `user` parameter is
-excluded from the signed POST body — it only selects which tenant's database handles the request.
+A request must look exactly like `/<username>/gateway`; anything else (missing segment, extra
+segments, or a traversal attempt) returns **HTTP 403**. Because the Android app signs the *entire*
+URL — including this path — the client simply uses `http://<host>:<port>/<user>/gateway` as its Server
+URL. The username is excluded from the signed POST body; it only selects which tenant's database handles
+the request, so no protocol change is required on the app side.
 
 ---
 
@@ -79,16 +81,16 @@ signature = Base64( SHA1( url + "," + sortedParams + "," + password ) )
 
 where:
 
-* `url` — the full request URL **including** the query string (e.g. `http://host/gateway.php?user=XYZ`).
-  The server reconstructs this from the incoming `Host` header and request path, so it must match what
-  the client signed.
+* `url` — the full request URL **including the path** (e.g. `http://host/XYZ/gateway`). The server
+  reconstructs this from the incoming `Host` header and request path, so it must match what the client
+  signed. There is no query string to append.
 * `sortedParams` — every POST body parameter as `name=value`, with parameters sorted **ascending by name**
   (matching PHP's `ksort`). They are joined with `,`.
 * `password` — the app's plaintext `password` setting for that tenant, appended after a trailing comma.
 
 Example: signing `{action:"incoming", from:"1555"}` with password `rosebud` over
-`http://h/g.php?user=XYZ` produces the input string
-`http://h/g.php?user=XYZ,action=incoming,from=1555,rosebud`.
+`http://h/XYZ/gateway` produces the input string
+`http://h/XYZ/gateway,action=incoming,from=1555,rosebud`.
 
 The server recomputes this value from the request and compares it to the header. A mismatch returns
 **HTTP 403** with `{"error":{"message":"Invalid password"}}` — the same body the PHP server returned.
@@ -120,7 +122,7 @@ The server recomputes this value from the request and compares it to the header.
 
 ## Endpoints & actions
 
-All traffic is a single endpoint: `/gateway.php`. The action is selected by the `action` POST parameter.
+Each tenant exposes a single endpoint at `/<user>/gateway`. The action is selected by the `action` POST parameter.
 
 | Action | Direction | Purpose |
 |--------|-----------|---------|
@@ -154,17 +156,28 @@ message sent/received counts, an inbox/outbox, and per-number conversation timel
 npm start                       # serves /api/* AND http://localhost:8080/ (the console)
 ```
 
-Open <http://localhost:8080/> in a browser. Register an account, log in, and the **Dashboard** shows
-the device-linking configuration:
+Two routes are served from `public/`:
+
+* **`/`** — a public, unauthenticated **landing page** describing how the gateway works and how to link
+  devices. No login required; it links through to the console.
+* **`/console`** — the SPA shell (login → dashboard). Unauthenticated users are shown the login form.
+
+Open <http://localhost:8080/> in a browser, click **Open console**, register an account, and log in to see
+the **Dashboard** with the device-linking configuration:
 
 | Field | Meaning |
 |-------|---------|
-| `server_url` | `/gateway.php?user=<username>` — paste into the app's *Server URL* (with the `?user=` suffix). |
+| `server_url` | `/<username>/gateway` — paste verbatim into the app's *Server URL*. The username is part of the path, so it is also what signs each request. |
 | `shared_secret` | The **device** signing key. Deliberately different from your login password. |
 
 > **The login password and the device shared secret are never the same value.** Registration generates a
 > random 24-char hex secret for devices; you can change your *login* password any time from Settings
 > without affecting the device secret.
+
+Registration collects an optional **email** and **primary contact number** (stored on the tenant row in
+Core.db, returned by `/api/me`), plus a **confirm-password** field to catch typos. The login view asks only
+for username + password, and both auth views keep a **← Back to home** link so operators are never trapped
+off the public landing page.
 
 ### API surface (all JSON, session via httpOnly cookie named `session`)
 
@@ -229,8 +242,8 @@ above. Runtime data lives under `data/` (git-ignored).
 
 In the EnvayaSMS settings, set:
 
-* **Server URL:** `http://<host>:<port>/gateway.php?user=<username>` — note the `?user=` suffix selects
-  the tenant. The username is *not* a separate setting; it is part of the signed URL.
+* **Server URL:** `http://<host>:<port>/<username>/gateway` — the username sits in the path and is part
+  of the signed request, so there is no separate tenant setting to append.
 * **Password:** the plaintext shared secret for that user (the same value used when registering).
 
 The app signs requests with this password, so it must match what was stored at registration time.
@@ -262,7 +275,7 @@ like `../../etc`) is rejected before any database access.
 
 ```bash
 node scripts/sign-request.js \
-  --url "http://localhost:8080/gateway.php?user=alice" \
+  --url "http://localhost:8080/alice/gateway" \
   --password rosebud \
   --field version=30 --field action=incoming \
   --field from=15551230000 --field message_type=sms \
@@ -277,8 +290,9 @@ any action against a running server without the phone app.
 ## Testing
 
 ```bash
-npm test        # integration tests: auth, every action, tenant isolation, at-rest encryption
-npm run smoke   # end-to-end over a real socket with independently-signed requests
+npm test            # unit + integration tests: auth, every action, tenant isolation, at-rest encryption
+npm run smoke       # gateway end-to-end over a real socket with independently-signed requests
+npm run e2e-console # web-dashboard end-to-end over a real socket (full cookie round-trip)
 ```
 
 The integration suites run each file in its own process against throwaway temp databases:
@@ -289,6 +303,9 @@ The integration suites run each file in its own process against throwaway temp d
 * `test/webApi.test.js` — account registration/login/logout, session cookies, password changes, the
   device-configuration reveal (and that the secret differs from the login password), per-tenant
   isolation of config, and the analytics endpoints on a fresh tenant.
+* `scripts/e2e-console.js` — boots a live server and drives the whole dashboard flow over HTTP
+  (register → login → config reveal with the new `/<user>/gateway` scheme, per-tenant isolation,
+  password-change session invalidation, logout).
 
 ---
 

@@ -74,18 +74,18 @@ function check(label, cond) {
     const port = server.address().port;
     console.log(`server listening on 127.0.0.1:${port}`);
 
-    let r = await post(port, '/gateway.php?user=XYZ', { version: '30', action: 'test' }, 'rosebud');
+    let r = await post(port, '/XYZ/gateway', { version: '30', action: 'test' }, 'rosebud');
     check('test -> empty events', r.status === 200 && JSON.parse(r.body).events.length === 0);
 
     userDb.enqueueOutgoing(userDb.openUserDb('XYZ'), { to: '15559998888', message: 'hi over http' });
-    r = await post(port, '/gateway.php?user=XYZ', { version: '30', action: 'outgoing' }, 'rosebud');
+    r = await post(port, '/XYZ/gateway', { version: '30', action: 'outgoing' }, 'rosebud');
     const ev = JSON.parse(r.body).events;
     check('poll -> queued send event', ev.length === 1 && ev[0].event === 'send' && ev[0].messages[0].to === '15559998888');
 
-    r = await post(port, '/gateway.php?user=XYZ', { version: '30', action: 'incoming', from: '15551230000', message_type: 'sms', message: 'hello in' }, 'rosebud');
+    r = await post(port, '/XYZ/gateway', { version: '30', action: 'incoming', from: '15551230000', message_type: 'sms', message: 'hello in' }, 'rosebud');
     check('incoming -> 200 (stored)', r.status === 200);
 
-    r = await post(port, '/gateway.php?user=XYZ', { version: '30', action: 'test' }, 'WRONGPASSWORD');
+    r = await post(port, '/XYZ/gateway', { version: '30', action: 'test' }, 'WRONGPASSWORD');
     check('wrong password -> 403 Invalid password', r.status === 403 && /Invalid password/.test(r.body));
 
     server.close();
