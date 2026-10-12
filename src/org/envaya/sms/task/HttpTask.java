@@ -189,6 +189,13 @@ public class HttpTask extends BaseHttpTask {
     }            
     
     @Override
+    protected void handleRequestException(Throwable ex)
+    {
+        String msg = (ex != null && ex.getMessage() != null) ? ex.getMessage() : (ex != null ? ex.getClass().getSimpleName() : "Unknown error");
+        app.log("Can't contact server: " + msg);
+    }
+
+    @Override
     protected void handleResponseException(Throwable ex)
     {
         app.logError("Error in server response", ex);
