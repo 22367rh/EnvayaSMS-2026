@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS send_status_log (
     received_at TEXT DEFAULT (datetime('now'))
 );
 
+-- User-defined phone-number aliases so conversations show "Mom" instead of a raw number.
+CREATE TABLE IF NOT EXISTS aliases (
+    phone  TEXT PRIMARY KEY,
+    alias  TEXT DEFAULT ''
+);
+
 -- Appended telemetry samples used to draw battery-over-time. One row per device per UTC minute is the
 -- maximum (deduped on phone_id + sample_minute) so history stays bounded without dropping data.
 CREATE TABLE IF NOT EXISTS device_samples (
@@ -197,8 +203,27 @@ function recordSendStatus(database, serverId, status, error) {
 /** Distinct devices that have reported telemetry (phone_id non-empty), most-recent first. */
 function listDevices(database) {
     return database
-        .prepare("SELECT phone_id, last_battery, last_power, last_network, last_seen FROM device_state WHERE phone_id <> '' ORDER BY last_seen DESC")
+        .prepare("SELECT phone_id, phone_token, device_status, last_battery, last_power, last_network, last_seen FROM device_state WHERE phone_id <> '' ORDER BY last_seen DESC")
         .all() || [];
+}
+
+/** All phone-number aliases for this tenant: [{phone, alias}]. Alias may be empty (no alias set). */
+function getAliases(database) {
+    return database.prepare('SELECT phone, alias FROM aliases').all() || [];
+}
+
+/** Set or clear an alias for a phone number. Empty/whitespace alias removes the mapping. */
+function upsertAlias(database, { phone, alias }) {
+    const p = String(phone == null ? '' : phone).trim();
+    if (!p) return;
+    const a = (alias == null ? '' : alias).trim();
+    if (!a) {
+        database.prepare('DELETE FROM aliases WHERE phone = ?').run(p);
+        return;
+    }
+    database.prepare(
+        'INSERT INTO aliases (phone, alias) VALUES (?, ?) ON CONFLICT(phone) DO UPDATE SET alias = excluded.alias'
+    ).run(p, a);
 }
 
 /** Battery samples for one device within [fromIso, toIso] as {t: isoLabel, level}. */
@@ -357,5 +382,7 @@ module.exports = {
     getOutbox,
     getConversations,
     getConversation,
+    getAliases,
+    upsertAlias,
     stats
 };

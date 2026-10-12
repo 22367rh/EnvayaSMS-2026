@@ -209,3 +209,33 @@ test('history / inbox / outbox / conversations return empty arrays for a fresh t
     const hist = JSON.parse((await api.handle({ url: '/api/history?range=24h', method: 'GET', headers: hdrs, bodyJson: {} })).body);
     assert.ok(Array.isArray(hist.battery) && Array.isArray(hist.buckets));
 });
+
+// --- phone-number aliases ----------------------------------------------------------------------
+test('aliases are stored per tenant and isolated across tenants', async () => {
+    const u = 'alias_' + Date.now().toString(36);
+    const reg = await registerUser(u);
+    const hdrs = { cookie: reg.setCookie.name + '=' + reg.setCookie.value };
+
+    // GET starts empty.
+    let list = JSON.parse((await api.handle({ url: '/api/aliases', method: 'GET', headers: hdrs, bodyJson: {} })).body).aliases;
+    assert.deepStrictEqual(list, []);
+
+    // Set an alias; it round-trips back verbatim.
+    const put = await api.handle({ url: '/api/aliases', method: 'POST', headers: hdrs, bodyJson: { phone: '+15551230000', alias: 'Mom' } });
+    assert.strictEqual(put.status, 200);
+    list = JSON.parse(put.body).aliases;
+    assert.deepStrictEqual(list, [{ phone: '+15551230000', alias: 'Mom' }]);
+
+    // An empty/whitespace alias removes the mapping.
+    const del = await api.handle({ url: '/api/aliases', method: 'POST', headers: hdrs, bodyJson: { phone: '+15551230000', alias: '   ' } });
+    assert.deepStrictEqual(JSON.parse(del.body).aliases, []);
+
+    // Another tenant cannot see this tenant's aliases.
+    const other = await registerUser('other_' + Date.now().toString(36));
+    const peek = await api.handle({ url: '/api/aliases', method: 'GET', headers: { cookie: other.setCookie.name + '=' + other.setCookie.value }, bodyJson: {} });
+    assert.deepStrictEqual(JSON.parse(peek.body).aliases, []);
+
+    // Unauthenticated requests are rejected.
+    const anon = await api.handle({ url: '/api/aliases', method: 'GET', headers: {}, bodyJson: {} });
+    assert.strictEqual(anon.status, 401);
+});

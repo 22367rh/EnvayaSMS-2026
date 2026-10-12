@@ -241,3 +241,21 @@ After Stage 15 shipped, operator feedback surfaced five concrete problems. All a
 
 Tests: added two webApi tests covering email/phone persistence + malformed-email rejection (24/24 unit
 tests pass); the console e2e (`scripts/e2e-console.js`, 13 checks) still passes end to end.
+
+
+---
+
+## Follow-up iteration — layout, device status, and conversation aliases
+
+A second round of console refinements:
+
+| Requirement | Implementation |
+|-------------|----------------|
+| List the devices linked to the account with their latest status. | `userDb.listDevices` now also selects `device_status`; the dashboard renders a **Linked devices** table (Device / Status / Battery / Network / Last seen) built from that row. |
+| Show device configuration as key-value pairs. | The config card was rewritten to use a `<table class="kv">` (Server URL, Username, Shared secret + reveal toggle). |
+| Navigation order Dashboard → Conversations → Inbox → Outbox → History. | `renderShell()` nav items reordered accordingly. |
+| Top navigation bar with centered content (replaces left sidebar). | `.sidebar`/`.shell` CSS replaced by `.topbar` + `.nav-links` + a centered `.content` container; `renderNavActive` now matches `.topbar a[data-route]`. |
+| Give a phone number an alias in the conversations view. | New per-tenant `aliases(phone TEXT PRIMARY KEY, alias TEXT)` table with `getAliases`/`upsertAlias`; `/api/aliases` (GET list, POST upsert/remove). The conversations list shows the alias when set and offers a **✎ Rename** control; the conversation detail header also resolves the alias. |
+
+Tests: added `test/webApi.test.js` coverage for aliases storage + tenant isolation
+(unauthenticated → 401); **25/25 unit tests pass**, smoke OK, console e2e (13 checks) still green.

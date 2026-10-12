@@ -60,29 +60,26 @@ async function loadMe() {
 function currentConfig() { return apiGet('/api/config'); }
 
 function renderShell() {
-    var navItems = [
-        ['dashboard', 'Dashboard', 'overview'],
-        ['history', 'History', 'chart'],
-        ['inbox', 'Inbox', 'inbox'],
-        ['outbox', 'Outbox', 'send'],
-        ['conversations', 'Conversations', 'chat']
-    ].map(function (it) { return it[0]; });
+    // Top navigation order: Dashboard, Conversations, Inbox, Outbox, History.
+    var items = [
+        ['dashboard', 'Dashboard'],
+        ['conversations', 'Conversations'],
+        ['inbox', 'Inbox'],
+        ['outbox', 'Outbox'],
+        ['history', 'History']
+    ];
 
-    var nav = el('nav', { class: 'nav' }, navItems.map(function (item) {
-        return el('a', { href: '#/' + item, 'data-route': item }, item);
+    var nav = el('div', { class: 'nav-links' }, items.map(function (it) {
+        return el('a', { href: '#/' + it[0], 'data-route': it[0] }, it[1]);
     }));
 
-    var shell = el('div', { class: 'shell' }, [
-        el('aside', { class: 'sidebar' }, [
-            el('div', { class: 'brand' }, ['EnvayaSMS', el('small', null, 'Gateway console')]),
+    var shell = el('div', { class: 'app-shell' }, [
+        el('header', { class: 'topbar' }, [
+            el('a', { href: '#/dashboard', class: 'brand-link' }, ['EnvayaSMS', el('small', null, 'Gateway console')]),
             nav,
-            el('div', { class: 'spacer' }),
-            el('div', { class: 'user' }, [
-                el('div', { style: 'font-weight:600;color:#e2e8f0' }, (state.user && state.user.username) || ''),
-                el('div', null, [el('a', { href: '#/logout', onclick: onLogout, style: 'color:#94a3b8;text-decoration:none' }, 'Log out')])
-            ])
+            el('a', { href: '#/logout', onclick: onLogout, class: 'nav-logout' }, 'Log out')
         ]),
-        el('main', { id: 'view' })
+        el('main', { id: 'view', class: 'content' })
     ]);
     $('#app').innerHTML = '';
     $('#app').appendChild(shell);
@@ -212,7 +209,7 @@ function route() {
     } catch (err) { view.appendChild(el('div', { class: 'msg error show' }, err.message || String(err))); }
 }
 function renderNavActive(name) {
-    document.querySelectorAll('.nav a').forEach(function (a) {
+    document.querySelectorAll('.topbar a[data-route]').forEach(function (a) {
         a.classList.toggle('active', a.getAttribute('data-route') === name);
     });
 }
@@ -233,18 +230,18 @@ async function copyText(node, text) {
 
 // --- dashboard -------------------------------------------------------------------------------
 async function dashboardView(view) {
-    var h1 = el('h1', null, 'Dashboard');
-    view.appendChild(h1);
+    view.appendChild(el('h1', null, 'Dashboard'));
 
     try {
         var cfg = await currentConfig();
         var devices = (await apiGet('/api/devices')).devices || [];
 
-        // "Show device connection details" toggle reveals server URL / username / shared secret.
+        // "Show device connection details" toggle reveals the shared secret.
         var secretVisible = false;
-        var secretEl = el('code', null, '••••••••');
-        function refreshSecret() { secretEl.textContent = secretVisible ? cfg.shared_secret : '••••••••'; }
-
+        function refreshSecret() {
+            var sc = document.getElementById('secret-cell');
+            if (sc) sc.textContent = secretVisible ? cfg.shared_secret : '••••••••';
+        }
         var revealBtn = el('button', { class: 'btn small secondary' }, 'Show device connection details');
         revealBtn.addEventListener('click', function () {
             secretVisible = !secretVisible;
@@ -252,37 +249,79 @@ async function dashboardView(view) {
             refreshSecret();
         });
 
+        // Configuration is shown as a key/value table.
         var configCard = el('div', { class: 'panel' }, [
-            el('div', { class: 'spread' }, [el('h2', null, 'Device configuration'), revealBtn]),
-            el('p', { class: 'sub', style: 'margin-top:4px' }, 'Put these in your EnvayaSMS app settings. The shared secret is the key devices use to sign requests.'),
-            fieldRow('Server URL', el('code', null, cfg.server_url)),
-            fieldRow('Username', el('code', null, cfg.username)),
-            el('div', { class: 'field' }, ['Shared secret', secretEl]),
-            el('p', { class: 'muted', style: 'font-size:12px;margin-top:6px' }, cfg.signature_note || '')
+            el('h2', null, 'Device configuration'),
+            el('p', { class: 'sub', style: 'margin-top:-4px' }, 'Put these in your EnvayaSMS app settings. The shared secret is the key devices use to sign requests.'),
+            kvTable([
+                ['Server URL', el('code', null, cfg.server_url)],
+                ['Username', el('code', null, cfg.username)]
+            ]),
+            kvRow('Shared secret', [el('code', { id: 'secret-cell' }, '••••••••'), revealBtn])
         ]);
 
-        var statsCard = el('div', { class: 'panel' }, [
-            el('h2', null, 'Quick stats'),
-            el('div', { class: 'grid' }, [
-                kpi(devices.length, 'Devices linked'),
-                kpi(describeStatus(devices), 'Last battery')
-            ])
-        ]);
+        // Devices linked to this account, with their latest reported status.
+        var devicesCard = buildDevicesCard(devices);
 
-        var links = el('div', { class: 'grid' }, [
-            linkCard('History', 'Battery + message volume over time', '#/history'),
-            linkCard('Inbox', 'Messages received on any device', '#/inbox'),
-            linkCard('Outbox', 'Messages sent by any device', '#/outbox'),
-            linkCard('Conversations', 'Chat-style view per number', '#/conversations')
-        ]);
-
-        // Append once, in order. No query-then-reappend dance (which previously nulled out the sub line).
         view.appendChild(configCard);
-        view.appendChild(statsCard);
-        view.appendChild(links);
+        view.appendChild(devicesCard);
     } catch (err) {
         view.appendChild(el('div', { class: 'msg error show' }, err.message || String(err)));
     }
+}
+
+// A key/value table of [label, valueNode] rows.
+function kvTable(rows) {
+    return el('table', { class: 'kv' }, rows.map(function (r) {
+        return el('tr', null, [el('th', { scope: 'col' }, r[0]), el('td', null, r[1])]);
+    }));
+}
+// A single table row with one label cell and one or more value cells.
+function kvRow(label, valueNodes) {
+    var cells = [el('th', { scope: 'col' }, label)];
+    for (var i = 0; i < valueNodes.length; i++) cells.push(el('td', null, valueNodes[i]));
+    return el('tr', null, cells);
+}
+
+// A panel listing the account's linked devices with their latest status.
+function buildDevicesCard(devices) {
+    var title = devices.length ? ('Linked devices (' + devices.length + ')' ) : 'Linked devices';
+    return el('div', { class: 'panel' }, [
+        el('h2', null, title),
+        devices.length ? deviceTable(devices) : el('div', { class: 'empty' }, 'No devices linked yet.')
+    ]);
+}
+function deviceTable(devices) {
+    var thead = el('thead', null, el('tr', null, [
+        el('th', { scope: 'col' }, 'Device'),
+        el('th', { scope: 'col' }, 'Status'),
+        el('th', { scope: 'col' }, 'Battery'),
+        el('th', { scope: 'col' }, 'Network'),
+        el('th', { scope: 'col' }, 'Last seen')
+    ]));
+    var tbody = el('tbody');
+    for (var i = 0; i < devices.length; i++) {
+        var d = devices[i];
+        tbody.appendChild(el('tr', null, [
+            el('td', null, el('code', null, d.phone_id || '(unknown)')),
+            el('td', null, statusBadge(d.device_status)),
+            el('td', null, batteryCell(d.last_battery)),
+            el('td', null, d.last_network || el('span', { class: 'muted' }, '—')),
+            el('td', null, el('span', { class: 'muted' }, fmtTime(d.last_seen)))
+        ]));
+    }
+    return el('div', { class: 'table-scroll' }, [el('table', null, [thead, tbody])]);
+}
+function statusBadge(status) {
+    var s = (status || '').trim().toLowerCase();
+    if (/online|connected|active/.test(s)) return el('span', { class: 'tag online' }, s || 'online');
+    if (/offline|disconnected/i.test(s)) return el('span', { class: 'tag offline' }, s || 'offline');
+    return el('span', { class: 'tag' }, status || 'unknown');
+}
+function batteryCell(level) {
+    var b = level == null ? -1 : Number(level);
+    if (b < 0) return el('span', { class: 'muted' }, '—');
+    return el('span', { class: 'chip battery' }, b + '%');
 }
 
 function fieldRow(label, valueNode) {
@@ -491,26 +530,55 @@ async function conversationsView(view) {
     var box = el('div');
     view.appendChild(sub); view.appendChild(box);
 
+    // phone -> alias (empty string means "no alias set yet").
+    var aliasesMap = {};
+
     async function load() {
         box.innerHTML = '<div class="muted" style="padding:16px">Loading…</div>';
         try {
             var data = await apiGet('/api/conversations');
-            renderTable(data.conversations || []);
+            aliasesMap = (await apiGet('/api/aliases')).aliases || {};
+            Object.keys(aliasesMap).forEach(function (k) { if (aliasesMap[k] == null) aliasesMap[k] = ''; });
+            render(data.conversations || []);
         } catch (err) { box.innerHTML = '<div class="msg error show" style="margin:12px">' + err.message + '</div>'; }
     }
-    function renderTable(rows) {
-        box.innerHTML = '';
-        if (!rows.length) { box.appendChild(el('div', { class: 'empty' }, 'No conversations yet.')); return; }
+
+    function render(rows) {
+        if (!rows.length) { box.innerHTML = ''; box.appendChild(el('div', { class: 'empty' }, 'No conversations yet.')); return; }
         var list = el('div', { class: 'conv-list' });
         rows.forEach(function (r) {
-            var total = (r.sent || 0) + (r.received || 0);
-            list.appendChild(el('div', { class: 'conv-item', onclick: function () { location.hash = '#/conversation?phone=' + encodeURIComponent(r.phone); } }, [
-                el('div', null, [el('div', { class: 'phone' }, r.phone), el('div', { class: 'last' }, (r.last_body || '').slice(0, 60) || ('—'))]),
-                el('div', { class: 'meta' }, [el('div', null, String(total)), el('div', { class: 'muted' }, fmtTime(r.updated_at))])
+            var phone = r.phone || '';
+            var alias = aliasesMap[phone] || '';
+            // Show the alias when set, otherwise the raw number.
+            var nameCol = el('div', null, [
+                el('div', { class: 'name strong' }, alias || phone),
+                !alias ? el('div', { class: 'muted phone-hint' }, phone) : null
+            ]);
+            list.appendChild(el('div', { class: 'conv-item', onclick: function () { location.hash = '#/conversation?phone=' + encodeURIComponent(phone); } }, [
+                nameCol,
+                el('div', { class: 'meta' }, [
+                    el('button', { type: 'button', class: 'link-btn rename', title: 'Give this number an alias', onclick: function (e) { e.stopPropagation(); doRename(phone, alias); } }, '✎ Rename'),
+                    el('div', { class: 'muted last' }, String(r.count || 0) + ' msgs · ' + (r.last_body || '').slice(0, 45)),
+                    el('div', { class: 'muted when' }, fmtTime(r.last_ts))
+                ])
             ]));
         });
+        box.innerHTML = '';
         box.appendChild(list);
     }
+
+    // Prompt for an alias; empty input clears it, cancel leaves it unchanged.
+    async function doRename(phone, currentAlias) {
+        var reply = window.prompt('Alias for ' + phone + ':', currentAlias || '');
+        if (reply === null) return;
+        try {
+            await api('/api/aliases', 'POST', { phone: phone, alias: reply });
+            aliasesMap[phone] = String(reply).trim();
+            var data = await apiGet('/api/conversations');
+            render(data.conversations || []);
+        } catch (err) { alert('Could not save alias: ' + err.message); }
+    }
+
     load();
 }
 
@@ -518,9 +586,12 @@ async function conversationsView(view) {
 async function conversationView(view) {
     var params = new URLSearchParams(location.hash.split('?')[1] || '');
     var phone = params.get('phone') || '';
+    // Resolve the alias (if any) so the header shows "Mom" instead of a raw number.
+    var aliasesMap = {};
+    try { aliasesMap = (await apiGet('/api/aliases')).aliases || {}; } catch (_) {}
     view.appendChild(el('h1', null, 'Conversation'));
     var back = el('a', { href: '#/conversations', style: 'display:inline-block;margin-bottom:8px;text-decoration:none' }, '← All conversations');
-    var title = el('div', null, [back, el('span', null, phone)]);
+    var title = el('div', null, [back, el('span', { class: 'conv-header-name' }, aliasesMap[phone] || phone)]);
     view.appendChild(title);
     var chat = el('div', { class: 'chat-wrap' });
     view.appendChild(chat);

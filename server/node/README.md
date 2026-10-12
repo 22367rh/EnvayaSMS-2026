@@ -194,6 +194,8 @@ off the public landing page.
 | `GET  /api/inbox` | ✔ | Incoming messages (`?sender=&limit=`). |
 | `GET  /api/outbox` | ✔ | Outgoing messages (`?to=&status=&limit=`). |
 | `GET  /api/conversations` | ✔ | Peer list with last-message summary. Click a peer → `/api/conversation?phone=<number>` for the date-ordered timeline across all devices. |
+| `GET  /api/aliases`       | ✔ | `{aliases:[{phone,alias}]}` — user-defined phone→name aliases (tenant-scoped). |
+| `POST /api/aliases`       | ✔ | Body `{phone, alias}` sets the alias; an empty/whitespace alias removes it. Returns the updated list. |
 
 Sessions live in an in-memory map (7-day TTL) and are destroyed on logout, password change, or when a
 password is changed elsewhere. Secrets are encrypted at rest with `GATEWAY_MASTER_KEY` (see below).

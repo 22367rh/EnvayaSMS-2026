@@ -225,6 +225,22 @@ function createWebApi(deps) {
         return ok(200, { phone: phone, messages: ud.getConversation(db, phone, ownNumber) });
     }
 
+    function handleGetAliases(headers) {
+        var username = requireUser(headers);
+        var db = ud.openUserDb(username);
+        return ok(200, { aliases: ud.getAliases(db) });
+    }
+
+    function handleUpsertAlias(headers, body) {
+        var username = requireUser(headers);
+        var phone = (body && String(body.phone || '').trim());
+        if (!phone) return fail(400, 'Missing phone number.');
+        var alias = body ? String(body.alias || '') : '';
+        var db = ud.openUserDb(username);
+        ud.upsertAlias(db, { phone: phone, alias: alias });
+        return ok(200, { aliases: ud.getAliases(db) });
+    }
+
     // --- dispatch ----------------------------------------------------------------------------
 
     function AuthError(status, message) {
@@ -254,6 +270,9 @@ function createWebApi(deps) {
             if (path === '/api/outbox' && method === 'GET') return handleOutbox(headers, searchParams);
             if (path === '/api/conversations' && method === 'GET') return handleConversations(headers);
             if (path === '/api/conversation' && method === 'GET') return handleConversation(headers, searchParams);
+            if (path === '/api/aliases' && method === 'GET') return handleGetAliases(headers);
+            if (path === '/api/aliases' && method === 'POST') return handleUpsertAlias(headers, body);
+
             return fail(404, 'Not found.');
         } catch (err) {
             if (err instanceof AuthError) return fail(err.statusCode, err.message);
