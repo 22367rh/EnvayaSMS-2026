@@ -8,7 +8,7 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "start": "node bin/start.js",
+    "start": "node bin/start",
     "register": "node scripts/register-user.js",
     "send": "node scripts/send-message.js",
     "sign": "node scripts/sign-request.js",
