@@ -182,8 +182,12 @@ function createHandler(deps) {
         const proto = requestProto(headers, {});
         const fullUrl = `${proto}://${headers.host || 'localhost'}${url}`;
         if (!signature.verifySignature(fullUrl, params, providedSignature, secret)) {
+            console.log(`[gateway] Message received from tenant '${tenant}' — authenticated: NO (invalid signature)`);
             return errorResponse(null, version);
         }
+        // A message was received and authenticated successfully. Log it along with its type
+        // (the 'action'), e.g. incoming, forward_sent, outgoing, send_status, device_status, test.
+        console.log(`[gateway] Message received from tenant '${tenant}' — authenticated: YES — message type: ${params.action || 'unknown'}`);
 
         // 3. Tenant-scoped persistence for all messaging/device data.
         const database = ud.openUserDb(tenant);
