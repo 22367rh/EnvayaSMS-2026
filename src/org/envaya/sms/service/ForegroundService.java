@@ -17,6 +17,7 @@
 package org.envaya.sms.service;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -112,6 +113,14 @@ public class ForegroundService extends Service {
     public void onCreate() {
         mNM = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
         app = (App)getApplication();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            String channelId = "envaya_sms_service";
+            CharSequence channelName = getString(R.string.app_name);
+            NotificationChannel channel = new NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW);
+            mNM.createNotificationChannel(channel);
+        }
+
         try {
             mStartForeground = getClass().getMethod("startForeground",
                     mStartForegroundSignature);
@@ -165,8 +174,15 @@ public class ForegroundService extends Service {
             boolean showFullNotification = Build.VERSION.SDK_INT < 33
                     || PermissionHelper.hasPermission(this, PermissionHelper.POST_NOTIFICATIONS);
 
-            Notification.Builder builder = new Notification.Builder(this)
-                    .setSmallIcon(R.drawable.icon)
+            String channelId = "envaya_sms_service";
+            Notification.Builder builder;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder = new Notification.Builder(this, channelId);
+            } else {
+                builder = new Notification.Builder(this);
+            }
+
+            builder.setSmallIcon(R.drawable.icon)
                     .setWhen(System.currentTimeMillis());
 
             if (showFullNotification) {
