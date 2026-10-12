@@ -220,15 +220,24 @@ public abstract class BaseHttpTask {
                 
                 if (statusCode == 200) 
                 {
+                    if (app != null) {
+                        app.recordSuccessfulServerConnection();
+                    }
                     handleResponse(response);
                 } 
                 else if (statusCode >= 400 && statusCode <= 499)
                 {
+                    if (app != null) {
+                        app.recordConnectionIssue();
+                    }
                     handleErrorResponse(response);
                     handleFailure();
                 }
                 else
                 {
+                    if (app != null) {
+                        app.recordConnectionIssue();
+                    }
                     throw new Exception("HTTP " + statusCode);
                 }
             }
@@ -236,6 +245,9 @@ public abstract class BaseHttpTask {
             {
                 // OkHttp Request objects carry no abortable connection state;
                 // releasing is handled below via response.body().close().
+                if (app != null) {
+                    app.recordConnectionIssue();
+                }
                 handleResponseException(ex);
                 handleFailure();
             }
@@ -249,6 +261,9 @@ public abstract class BaseHttpTask {
         }
         else
         {
+            if (app != null) {
+                app.recordConnectionIssue();
+            }
             handleRequestException(requestException);
             handleFailure();
         }

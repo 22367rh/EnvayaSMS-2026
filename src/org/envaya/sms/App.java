@@ -28,6 +28,7 @@ import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -165,6 +166,95 @@ public final class App extends Application {
     private AmqpConsumer amqpConsumer;
     
     private boolean connectivityError = false;
+
+    private long lastSuccessfulServerConnectionTime = 0;
+    private boolean lastCommunicationFailed = false;
+    private ArrayList<Long> connectionIssueTimestamps = new ArrayList<Long>();
+    private long lastOutgoingMessageTime = 0;
+    private long lastIncomingMessageUpdateTime = 0;
+    private long lastDeviceStatusTime = 0;
+
+    public synchronized void recordSuccessfulServerConnection()
+    {
+        lastSuccessfulServerConnectionTime = System.currentTimeMillis();
+        lastCommunicationFailed = false;
+    }
+
+    public synchronized void recordConnectionIssue()
+    {
+        lastCommunicationFailed = true;
+        long now = System.currentTimeMillis();
+        connectionIssueTimestamps.add(now);
+        long cutoff = now - 10 * 60 * 1000L;
+        Iterator<Long> it = connectionIssueTimestamps.iterator();
+        while (it.hasNext())
+        {
+            if (it.next() < cutoff)
+            {
+                it.remove();
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+
+    public synchronized void recordOutgoingMessage()
+    {
+        lastOutgoingMessageTime = System.currentTimeMillis();
+    }
+
+    public synchronized void recordIncomingMessageUpdate()
+    {
+        lastIncomingMessageUpdateTime = System.currentTimeMillis();
+    }
+
+    public synchronized void recordDeviceStatusUpdate()
+    {
+        lastDeviceStatusTime = System.currentTimeMillis();
+    }
+
+    public synchronized String getServerStatus()
+    {
+        long now = System.currentTimeMillis();
+        long cutoff10Mins = now - 10 * 60 * 1000L;
+
+        Iterator<Long> it = connectionIssueTimestamps.iterator();
+        while (it.hasNext())
+        {
+            if (it.next() < cutoff10Mins)
+            {
+                it.remove();
+            }
+        }
+
+        if (connectionIssueTimestamps.size() >= 3)
+        {
+            return "broken";
+        }
+        else if (lastCommunicationFailed)
+        {
+            return "degraded";
+        }
+        else if (lastSuccessfulServerConnectionTime > 0 && (now - lastSuccessfulServerConnectionTime <= 10 * 60 * 1000L))
+        {
+            return "active";
+        }
+        else if (lastSuccessfulServerConnectionTime > 0)
+        {
+            return "active";
+        }
+        else
+        {
+            return "unknown";
+        }
+    }
+
+    public synchronized long getLastSuccessfulServerConnectionTime() { return lastSuccessfulServerConnectionTime; }
+    public synchronized long getLastOutgoingMessageTime() { return lastOutgoingMessageTime; }
+    public synchronized long getLastIncomingMessageUpdateTime() { return lastIncomingMessageUpdateTime; }
+    public synchronized long getLastDeviceStatusTime() { return lastDeviceStatusTime; }
     
     /**
      * Central background executor for all network / async work.

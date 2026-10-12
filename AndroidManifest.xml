@@ -58,6 +58,9 @@
         <activity android:exported="false" android:name="org.envaya.sms.ui.PendingMessages" android:label="@string/pending_messages_title">
         </activity>
 
+        <activity android:exported="false" android:name="org.envaya.sms.ui.StatusView" android:label="Status View">
+        </activity>
+
         <activity android:exported="false" android:name="org.envaya.sms.ui.Prefs" android:label="@string/settings_title" android:theme="@style/Theme.Envaya.Prefs">
         </activity>
         

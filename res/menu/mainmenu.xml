@@ -18,5 +18,7 @@
     <item android:id="@+id/pending"
             android:icon="@drawable/ic_menu_dialog"
           android:title="@string/pending" />                    
-          
+    <item android:id="@+id/status"
+          android:icon="@drawable/ic_menu_puzzle"
+          android:title="Status" />
 </menu>

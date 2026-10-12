@@ -47,6 +47,7 @@ public class DeviceStatusReceiver extends BroadcastReceiver
             new NameValuePair("action", App.ACTION_DEVICE_STATUS),
             new NameValuePair("status", status)
         );
+        app.recordDeviceStatusUpdate();
         task.setRetryOnConnectivityError(true);
         task.execute();
     }

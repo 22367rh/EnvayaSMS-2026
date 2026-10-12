@@ -217,12 +217,30 @@ public class HttpTask extends BaseHttpTask {
             String responseBody = response.body().string();
         
             JSONObject json = new JSONObject(responseBody);
+            try
+            {
+                int msgCount = JsonUtils.getMessagesList(json, app, getDefaultToAddress()).size();
+                app.log("Checked for messages: received " + msgCount + " message(s)");
+            }
+            catch (Exception e)
+            {
+                app.log("Checked for messages: received response");
+            }
             
             handleResponseJSON(json);
         }
         else if (contentType.startsWith("text/xml"))
         {
             Document xml = XmlUtils.parseResponse(response);     
+            try
+            {
+                int msgCount = XmlUtils.getMessagesList(xml, app, getDefaultToAddress()).size();
+                app.log("Checked for messages: received " + msgCount + " message(s)");
+            }
+            catch (Exception e)
+            {
+                app.log("Checked for messages: received XML response");
+            }
            
             handleResponseXML(xml);
         }

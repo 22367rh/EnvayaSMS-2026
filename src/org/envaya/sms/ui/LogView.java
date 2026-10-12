@@ -345,6 +345,9 @@ public class LogView extends Activity {
         } else if (itemId == R.id.pending) {
             startActivity(new Intent(this, PendingMessages.class));
             return true;
+        } else if (itemId == R.id.status) {
+            startActivity(new Intent(this, StatusView.class));
+            return true;
         } else if (itemId == R.id.test) {
             app.log("Testing server connection...");
             new TestTask().execute();

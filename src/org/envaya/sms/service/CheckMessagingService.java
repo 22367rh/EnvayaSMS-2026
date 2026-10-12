@@ -46,6 +46,9 @@ public class CheckMessagingService extends JobIntentService
     {        
         try
         {
+            if (app != null) {
+                app.recordIncomingMessageUpdate();
+            }
             checkNewSentSms();
             // Option B (see upgrade-plan/11): read inbound SMS from the inbox provider so forwarding
             // works even when EnvayaSMS is not the default SMS app. Fires from the same content://mms-sms/

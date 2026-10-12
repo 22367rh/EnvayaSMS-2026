@@ -83,6 +83,7 @@ public class Outbox {
 
         if (serverId != null) {
             app.log("Notifying server " + smsDesc + " " + logMessage);
+            app.recordOutgoingMessage();
 
             HttpTask task = new HttpTask(app,
                 new NameValuePair("id", serverId),
@@ -95,6 +96,7 @@ public class Outbox {
             
         } else {
             app.log(smsDesc + " " + logMessage);
+            app.recordOutgoingMessage();
         }
     }
     
