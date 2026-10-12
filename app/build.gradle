@@ -1,7 +1,7 @@
 // Single Android application module for EnvayaSMS.
 // Source files are kept in place at the repo root; only these sourceSets point up one level.
 plugins {
-    id 'com.android.application' version '8.5.2'
+    id 'com.android.application' version '8.13.2'
 }
 
 android {
