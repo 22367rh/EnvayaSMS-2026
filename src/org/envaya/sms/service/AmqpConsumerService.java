@@ -36,17 +36,26 @@ public class AmqpConsumerService extends JobIntentService {
     @Override
     protected void onHandleWork(Intent intent)
     {  
-        boolean start = intent.getBooleanExtra("start", false);
-        
-        AmqpConsumer consumer = app.getAmqpConsumer();
-        if (start)
-        {                       
-            consumer.startBlocking();
-        }
-        else
+        try
         {
-            consumer.stopBlocking();            
+            boolean start = intent.getBooleanExtra("start", false);
+            
+            AmqpConsumer consumer = app.getAmqpConsumer();
+            if (start)
+            {                       
+                consumer.startBlocking();
+            }
+            else
+            {
+                consumer.stopBlocking();            
+            }
         }
-        
+        catch (Throwable t)
+        {
+            if (app != null)
+            {
+                app.logError("Error in AmqpConsumerService", t);
+            }
+        }
     }
 }

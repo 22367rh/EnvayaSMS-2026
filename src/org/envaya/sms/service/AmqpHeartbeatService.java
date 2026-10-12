@@ -36,7 +36,17 @@ public class AmqpHeartbeatService extends JobIntentService {
     @Override
     protected void onHandleWork(Intent intent)
     {          
-        AmqpConsumer consumer = app.getAmqpConsumer();
-        consumer.sendHeartbeatBlocking();
+        try
+        {
+            AmqpConsumer consumer = app.getAmqpConsumer();
+            consumer.sendHeartbeatBlocking();
+        }
+        catch (Throwable t)
+        {
+            if (app != null)
+            {
+                app.logError("Error in AmqpHeartbeatService", t);
+            }
+        }
     }
 }

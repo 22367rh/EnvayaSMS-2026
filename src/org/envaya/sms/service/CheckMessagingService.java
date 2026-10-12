@@ -44,13 +44,23 @@ public class CheckMessagingService extends JobIntentService
     @Override
     protected void onHandleWork(Intent intent)
     {        
-        checkNewSentSms();
-        // Option B (see upgrade-plan/11): read inbound SMS from the inbox provider so forwarding
-        // works even when EnvayaSMS is not the default SMS app. Fires from the same content://mms-sms/
-        // observer that triggers this service for MMS/sent-SMS.
-        checkNewIncomingSms();
-        
-        checkNewMms();
+        try
+        {
+            checkNewSentSms();
+            // Option B (see upgrade-plan/11): read inbound SMS from the inbox provider so forwarding
+            // works even when EnvayaSMS is not the default SMS app. Fires from the same content://mms-sms/
+            // observer that triggers this service for MMS/sent-SMS.
+            checkNewIncomingSms();
+            
+            checkNewMms();
+        }
+        catch (Throwable t)
+        {
+            if (app != null)
+            {
+                app.logError("Error in CheckMessagingService", t);
+            }
+        }
     }
     
     private void checkNewIncomingSms()
