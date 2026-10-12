@@ -73,6 +73,7 @@ public final class App extends Application {
     public static final String DEVICE_STATUS_BATTERY_LOW = "battery_low";
     public static final String DEVICE_STATUS_BATTERY_OKAY = "battery_okay";
     public static final String DEVICE_STATUS_SEND_LIMIT_EXCEEDED = "send_limit_exceeded";
+    public static final String DEVICE_STATUS_ONLINE = "online";
     
     public static final String MESSAGE_TYPE_MMS = "mms";
     public static final String MESSAGE_TYPE_SMS = "sms";

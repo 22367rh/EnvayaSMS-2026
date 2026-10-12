@@ -66,7 +66,15 @@ public class LogView extends Activity {
         @Override
         protected void handleResponse(Response response) throws Exception 
         {
-            app.log("Server connection OK!");            
+            app.log("Server connection OK!");
+
+            // Connection succeeded: send an initial device status message so the
+            // server knows this device just came online.
+            HttpTask statusTask = new HttpTask(app,
+                new NameValuePair("action", App.ACTION_DEVICE_STATUS),
+                new NameValuePair("status", App.DEVICE_STATUS_ONLINE));
+            statusTask.setRetryOnConnectivityError(true);
+            statusTask.execute(App.httpExecutor);
         }
     }
     
