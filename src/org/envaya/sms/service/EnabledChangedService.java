@@ -2,9 +2,11 @@ package org.envaya.sms.service;
 
 import android.app.AlarmManager;
 import androidx.core.app.JobIntentService;
+import androidx.core.content.ContextCompat;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import org.envaya.sms.App;
@@ -45,7 +47,15 @@ public class EnabledChangedService extends JobIntentService {
         TelephonyManager telephony = (TelephonyManager)   
             getSystemService(Context.TELEPHONY_SERVICE);                  
 
-        startService(new Intent(app, ForegroundService.class));
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(app, new Intent(app, ForegroundService.class));
+            } else {
+                startService(new Intent(app, ForegroundService.class));
+            }
+        } catch (Exception e) {
+            app.logError("Failed to start ForegroundService", e);
+        }
         
         app.setOutgoingMessageAlarm();
 
