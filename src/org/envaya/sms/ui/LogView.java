@@ -9,6 +9,7 @@ import android.content.DialogInterface.OnClickListener;
 import android.net.Uri;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import androidx.core.content.ContextCompat;
 import androidx.core.text.HtmlCompat;
 import android.text.method.LinkMovementMethod;
 import android.view.Menu;
@@ -140,9 +141,9 @@ public class LogView extends Activity {
         updateUpgradeButton();
         updateLogView();
         
-        registerReceiver(logReceiver, new IntentFilter(App.LOG_CHANGED_INTENT));        
-        registerReceiver(settingsReceiver, new IntentFilter(App.SETTINGS_CHANGED_INTENT));        
-        registerReceiver(expansionPacksReceiver, new IntentFilter(App.EXPANSION_PACKS_CHANGED_INTENT));        
+        ContextCompat.registerReceiver(this, logReceiver, new IntentFilter(App.LOG_CHANGED_INTENT), ContextCompat.RECEIVER_NOT_EXPORTED);        
+        ContextCompat.registerReceiver(this, settingsReceiver, new IntentFilter(App.SETTINGS_CHANGED_INTENT), ContextCompat.RECEIVER_NOT_EXPORTED);        
+        ContextCompat.registerReceiver(this, expansionPacksReceiver, new IntentFilter(App.EXPANSION_PACKS_CHANGED_INTENT), ContextCompat.RECEIVER_NOT_EXPORTED);        
 
         if (savedInstanceState == null)
         {

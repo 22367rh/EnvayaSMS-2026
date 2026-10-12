@@ -10,6 +10,7 @@ import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
+import androidx.core.content.ContextCompat;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -60,7 +61,7 @@ public class PendingMessages extends ListActivity {
         IntentFilter refreshReceiverFilter = new IntentFilter();        
         refreshReceiverFilter.addAction(App.INBOX_CHANGED_INTENT);
         refreshReceiverFilter.addAction(App.OUTBOX_CHANGED_INTENT);
-        registerReceiver(refreshReceiver, refreshReceiverFilter);        
+        ContextCompat.registerReceiver(this, refreshReceiver, refreshReceiverFilter, ContextCompat.RECEIVER_NOT_EXPORTED);        
         
         ListView listView = getListView();        
         

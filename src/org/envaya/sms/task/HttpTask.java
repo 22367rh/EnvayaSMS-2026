@@ -15,6 +15,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import androidx.core.content.ContextCompat;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.SocketTimeoutException;
@@ -104,7 +105,7 @@ public class HttpTask extends BaseHttpTask {
         params.add(new NameValuePair("now", "" + System.currentTimeMillis()));
         params.add(new NameValuePair("settings_version", "" + app.getSettingsVersion()));
         
-        Intent lastBatteryIntent = app.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        Intent lastBatteryIntent = ContextCompat.registerReceiver(app, null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_EXPORTED);
         
         if (lastBatteryIntent != null)
         {

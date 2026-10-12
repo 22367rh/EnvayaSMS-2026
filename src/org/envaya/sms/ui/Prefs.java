@@ -20,6 +20,7 @@ import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 import org.envaya.sms.App;
 import org.envaya.sms.R;
@@ -94,7 +95,7 @@ public class Prefs extends AppCompatActivity {
             // Re-render the send-limit summary when expansion packs are (un)installed.
             IntentFilter installReceiverFilter = new IntentFilter();
             installReceiverFilter.addAction(App.EXPANSION_PACKS_CHANGED_INTENT);
-            requireContext().registerReceiver(installReceiver, installReceiverFilter);
+            ContextCompat.registerReceiver(requireContext(), installReceiver, installReceiverFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
         }
 
         @Override
