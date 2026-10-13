@@ -20,6 +20,7 @@ import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
 import android.text.SpannableStringBuilder;
 import android.os.Build;
 import android.util.Log;
@@ -33,6 +34,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -284,6 +286,7 @@ public final class App extends Application {
         super.onCreate();
         
         settings = PreferenceManager.getDefaultSharedPreferences(this);        
+        initPhoneIdAndToken();
         messagingUtils = new MessagingUtils(this);
         
         callListener = new CallListener(this);  
@@ -583,13 +586,40 @@ public final class App extends Application {
         return tryGetBooleanSetting("amqp_enabled", false);
     }
 
+    private void initPhoneIdAndToken()
+    {
+        if (getPhoneID().isEmpty())
+        {
+            String androidId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+            if (androidId != null)
+            {
+                setPhoneID(androidId);
+            }
+        }
+        
+        if (getPhoneToken().isEmpty())
+        {
+            setPhoneToken(UUID.randomUUID().toString());
+        }
+    }
+
     public String getPhoneID() {
         return settings.getString("phone_id", "");
+    }
+    
+    public void setPhoneID(String phoneId)
+    {
+        saveStringSetting("phone_id", phoneId);
     }
     
     public String getPhoneToken()
     {
         return settings.getString("phone_token", "");
+    }
+    
+    public void setPhoneToken(String phoneToken)
+    {
+        saveStringSetting("phone_token", phoneToken);
     }
     
     public int getOutgoingPollSeconds() 
