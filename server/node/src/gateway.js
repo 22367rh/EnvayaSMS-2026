@@ -193,6 +193,21 @@ function createHandler(deps) {
         const database = ud.openUserDb(tenant);
         upsertDeviceTelemetry(database, params);
 
+        // Persist this request as per-tenant activity so it is visible on the web dashboard (not just the
+        // server console). Only authenticated requests reach this point — DB access happens after the
+        // signature check, by design — so `authenticated` is always 1 here.
+        try {
+            ud.recordGatewayEvent(database, {
+                action: params.action || '',
+                phoneId: params.phone_id || '',
+                fromNumber: String(params.from || ''),
+                battery: params.battery,
+                network: params.network
+            });
+        } catch (_) {
+            // Activity logging must never break request handling.
+        }
+
         switch (params.action) {
             case 'incoming':
                 return handleIncoming(database, params, files, tenant, version);

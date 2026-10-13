@@ -239,3 +239,35 @@ test('aliases are stored per tenant and isolated across tenants', async () => {
     const anon = await api.handle({ url: '/api/aliases', method: 'GET', headers: {}, bodyJson: {} });
     assert.strictEqual(anon.status, 401);
 });
+
+// --- gateway activity --------------------------------------------------------------------------
+test('gateway-events returns recorded activity and is isolated per tenant', async () => {
+    const u = 'act_' + Date.now().toString(36);
+    const reg = await registerUser(u);
+    const hdrs = { cookie: reg.setCookie.name + '=' + reg.setCookie.value };
+
+    // Unauthenticated requests are rejected.
+    const anon = await api.handle({ url: '/api/gateway-events', method: 'GET', headers: {}, bodyJson: {} });
+    assert.strictEqual(anon.status, 401);
+
+    // Empty for a fresh tenant.
+    let list = JSON.parse((await api.handle({ url: '/api/gateway-events', method: 'GET', headers: hdrs, bodyJson: {} })).body).events;
+    assert.deepStrictEqual(list, []);
+
+    // Record an event directly in this tenant's DB (as the gateway would for an authenticated request).
+    const db = userDb.openUserDb(u);
+    userDb.recordGatewayEvent(db, { action: 'incoming', phoneId: 'dev-1', fromNumber: '15551112222', battery: 73, network: 'WIFI' });
+
+    const data = JSON.parse((await api.handle({ url: '/api/gateway-events?limit=50', method: 'GET', headers: hdrs, bodyJson: {} })).body);
+    assert.strictEqual(data.events.length, 1);
+    const ev = data.events[0];
+    assert.strictEqual(ev.action, 'incoming');
+    assert.strictEqual(ev.authenticated, 1);
+    assert.strictEqual(ev.phone_id, 'dev-1');
+    assert.strictEqual(Number(ev.battery), 73);
+
+    // Another tenant must not see this tenant's activity.
+    const other = await registerUser('otheract_' + Date.now().toString(36));
+    const peek = JSON.parse((await api.handle({ url: '/api/gateway-events', method: 'GET', headers: { cookie: other.setCookie.name + '=' + other.setCookie.value }, bodyJson: {} })).body).events;
+    assert.deepStrictEqual(peek, []);
+});

@@ -216,6 +216,14 @@ function createWebApi(deps) {
         return ok(200, { conversations: ud.getConversations(db) });
     }
 
+    // Recent gateway activity (requests the app sent): message type + whether auth succeeded.
+    function handleGatewayEvents(headers, searchParams) {
+        var username = requireUser(headers);
+        var db = ud.openUserDb(username);
+        var limit = Math.min(parseInt(searchParams.get('limit') || '200', 10) || 200, 2000);
+        return ok(200, { events: ud.getGatewayEvents(db, limit) });
+    }
+
     function handleConversation(headers, searchParams) {
         var username = requireUser(headers);
         var phone = searchParams.get('phone') || '';
@@ -269,6 +277,7 @@ function createWebApi(deps) {
             if (path === '/api/inbox' && method === 'GET') return handleInbox(headers, searchParams);
             if (path === '/api/outbox' && method === 'GET') return handleOutbox(headers, searchParams);
             if (path === '/api/conversations' && method === 'GET') return handleConversations(headers);
+            if (path === '/api/gateway-events' && method === 'GET') return handleGatewayEvents(headers, searchParams);
             if (path === '/api/conversation' && method === 'GET') return handleConversation(headers, searchParams);
             if (path === '/api/aliases' && method === 'GET') return handleGetAliases(headers);
             if (path === '/api/aliases' && method === 'POST') return handleUpsertAlias(headers, body);

@@ -133,6 +133,35 @@ test('device_status records telemetry', async () => {
     assert.strictEqual(row.last_network, 'WIFI');
 });
 
+test('authenticated requests are recorded as per-tenant gateway events', async () => {
+    const devId = 'dev-gw-events-' + Date.now();
+    await doRequest({ url: '/XYZ/gateway', params: { version: '30', action: 'incoming', phone_number: '15550000001', from: '15551230000', message_type: 'sms', message: 'hi' }, password: 'rosebud' });
+    await doRequest({ url: '/XYZ/gateway', params: { version: '30', action: 'device_status', phone_id: devId, battery: '42', network: 'WIFI' }, password: 'rosebud' });
+
+    const db = userDb.openUserDb('XYZ');
+    // This test's events are the most-recently inserted rows.
+    const latest = db.prepare('SELECT * FROM gateway_events ORDER BY id DESC LIMIT 2').all();
+    assert.ok(latest.length >= 2, 'gateway events should be persisted');
+
+    // Every recorded event is authenticated (only authenticated requests reach persistence).
+    for (const r of latest) assert.strictEqual(r.authenticated, 1);
+
+    // Context fields are captured for the device_status event.
+    const devRow = latest.find((r) => r.phone_id === devId);
+    assert.ok(devRow, 'device_status event should be recorded');
+    assert.strictEqual(devRow.action, 'device_status');
+    assert.strictEqual(Number(devRow.battery), 42);
+    assert.strictEqual(devRow.network, 'WIFI');
+});
+
+test('gateway events are isolated per tenant', async () => {
+    await doRequest({ url: '/XYZ/gateway', params: { version: '30', action: 'test' }, password: 'rosebud' });
+    const xyzCount = userDb.openUserDb('XYZ').prepare('SELECT COUNT(*) c FROM gateway_events').get().c;
+    const abcCount = userDb.openUserDb('ABC').prepare('SELECT COUNT(*) c FROM gateway_events').get().c;
+    assert.ok(xyzCount >= 1);
+    assert.strictEqual(abcCount, 0, 'other tenant should not see this tenant events');
+});
+
 test('MMS forward parses text fields and stores binary parts', async () => {
     const boundary = '----envayapart' + Date.now();
     let body =

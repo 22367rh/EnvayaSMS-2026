@@ -60,12 +60,13 @@ async function loadMe() {
 function currentConfig() { return apiGet('/api/config'); }
 
 function renderShell() {
-    // Top navigation order: Dashboard, Conversations, Inbox, Outbox, History.
+    // Top navigation order: Dashboard, Conversations, Inbox, Outbox, Activity, History.
     var items = [
         ['dashboard', 'Dashboard'],
         ['conversations', 'Conversations'],
         ['inbox', 'Inbox'],
         ['outbox', 'Outbox'],
+        ['activity', 'Activity'],
         ['history', 'History']
     ];
 
@@ -192,7 +193,7 @@ function route() {
     var name = parts[0] || 'dashboard';
     if (name === 'logout') { onLogout(); return; }
     if (!state.user) { renderLanding(); return; }
-    if (['dashboard', 'history', 'inbox', 'outbox', 'conversations', 'settings'].indexOf(name) === -1) name = 'dashboard';
+    if (['dashboard', 'history', 'inbox', 'outbox', 'conversations', 'activity', 'settings'].indexOf(name) === -1) name = 'dashboard';
     renderNavActive(name);
     var view = $('#view');
     if (!view) { renderShell(); view = $('#view'); }
@@ -204,6 +205,7 @@ function route() {
             case 'inbox': inboxView(view); break;
             case 'outbox': outboxView(view); break;
             case 'conversations': conversationsView(view); break;
+            case 'activity': activityView(view); break;
             case 'settings': settingsView(view); break;
         }
     } catch (err) { view.appendChild(el('div', { class: 'msg error show' }, err.message || String(err))); }
@@ -607,6 +609,58 @@ async function conversationView(view) {
             chat.appendChild(el('div', { class: 'bubble ' + cls }, [m.body || '', el('span', { class: 'when' }, fmtTime(m.ts))]));
         });
     } catch (err) { chat.appendChild(el('div', { class: 'msg error show' }, err.message)); }
+}
+
+// --- gateway activity ------------------------------------------------------------------------
+async function activityView(view) {
+    view.appendChild(el('h1', null, 'Activity'));
+    var sub = el('p', { class: 'sub' }, 'Recent gateway activity from your device(s).');
+    var box = el('div');
+    view.appendChild(sub); view.appendChild(box);
+
+    var filter = el('input', { type: 'search', placeholder: 'Filter by type…', style: 'max-width:220px' });
+    var tableWrap = el('div', { style: 'overflow:auto;border:1px solid var(--border);border-radius:10px' });
+    box.appendChild(filter); box.appendChild(tableWrap);
+
+    async function load() {
+        tableWrap.innerHTML = '<div class="muted" style="padding:16px">Loading…</div>';
+        try {
+            var data = await apiGet('/api/gateway-events?limit=1000');
+            renderTable(data.events || []);
+        } catch (err) { tableWrap.innerHTML = '<div class="msg error show" style="margin:12px">' + err.message + '</div>'; }
+    }
+
+    function authBadge(a) {
+        var on = !!a;
+        return el('span', { class: 'tag ' + (on ? 'online' : 'offline') }, on ? 'yes' : 'no');
+    }
+
+    function renderTable(rows) {
+        var filtered = filter.value.trim() ? rows.filter(function (r) { return String(r.action || '').toLowerCase().indexOf(filter.value.toLowerCase()) !== -1; }) : rows;
+        tableWrap.innerHTML = '';
+        if (!filtered.length) { tableWrap.appendChild(el('div', { class: 'empty' }, 'No gateway activity yet.')); return; }
+        var thead = el('thead', null, el('tr', null, [
+            th('Time'), th('Type'), th('Device'), th('Auth'), th('From'), th('Battery'), th('Network')
+        ]));
+        var tbody = el('tbody');
+        filtered.slice(0, 1000).forEach(function (r) {
+            tbody.appendChild(el('tr', null, [
+                td(el('span', { class: 'muted' }, fmtTime(r.received_at))),
+                td(el('span', { class: 'chip' }, r.action || 'unknown')),
+                td(el('code', null, r.phone_id || '(unknown)')),
+                td(authBadge(r.authenticated)),
+                td(r.from_number ? el('span', null, r.from_number) : el('span', { class: 'muted' }, '—')),
+                td((r.battery != null && Number(r.battery) >= 0) ? el('span', { class: 'chip battery' }, r.battery + '%') : el('span', { class: 'muted' }, '—')),
+                td(r.network || el('span', { class: 'muted' }, '—'))
+            ]));
+        });
+        tableWrap.appendChild(el('table', null, [thead, tbody]));
+    }
+    function th(t) { return el('th', null, t); }
+    function td(c) { return el('td', null, c); }
+
+    filter.addEventListener('input', load);
+    load();
 }
 
 // --- settings --------------------------------------------------------------------------------

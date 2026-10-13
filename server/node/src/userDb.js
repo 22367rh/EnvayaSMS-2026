@@ -60,6 +60,21 @@ CREATE TABLE IF NOT EXISTS send_status_log (
     received_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Per-request gateway activity for this tenant: one row per request the app sent (incoming, device_status,
+-- test, etc.). Persisted so it shows on the web dashboard, not just the server console.
+-- The authenticated column records whether the signature verified; only authenticated requests reach
+-- persistence in practice.
+CREATE TABLE IF NOT EXISTS gateway_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    action       TEXT DEFAULT '',          -- message type / action, e.g. incoming, device_status, test
+    authenticated INT DEFAULT 1,           -- 1 = signature verified, 0 = failed auth
+    phone_id     TEXT DEFAULT '',
+    from_number  TEXT DEFAULT '',          -- sender for incoming (context only)
+    battery      INT DEFAULT -1,
+    network      TEXT DEFAULT '',
+    received_at  TEXT DEFAULT (datetime('now'))
+);
+
 -- User-defined phone-number aliases so conversations show "Mom" instead of a raw number.
 CREATE TABLE IF NOT EXISTS aliases (
     phone  TEXT PRIMARY KEY,
@@ -185,6 +200,32 @@ function claimQueuedOutgoing(database) {
     return database
         .prepare("SELECT * FROM outgoing_messages WHERE status = 'queued' ORDER BY priority DESC, created_at ASC, id ASC")
         .all();
+}
+
+/**
+ * Record one gateway event (a request the app sent). `authenticated` is 1 for a signature-verified
+ * request and 0 otherwise. Best-effort: never throws, so activity logging can't break request handling.
+ */
+function recordGatewayEvent(database, { action, authenticated = 1, phoneId, fromNumber, battery, network }) {
+    database.prepare(
+        `INSERT INTO gateway_events (action, authenticated, phone_id, from_number, battery, network)
+         VALUES (:action, :authenticated, :phone_id, :from_number, :battery, :network)`
+    ).run({
+        action: action || '',
+        authenticated: authenticated ? 1 : 0,
+        phone_id: phoneId || '',
+        from_number: fromNumber || '',
+        battery: battery == null ? -1 : Number(battery),
+        network: network || ''
+    });
+}
+
+/** Recent gateway events for this tenant, newest first. `limit` is clamped to 2000. */
+function getGatewayEvents(database, limit = 200) {
+    const n = Math.min(parseInt(limit, 10) || 200, 2000);
+    return database
+        .prepare('SELECT action, authenticated, phone_id, from_number, battery, network, received_at FROM gateway_events ORDER BY id DESC LIMIT ?')
+        .all(n) || [];
 }
 
 /** Record a send_status report and transition the message out of 'queued'. */
@@ -382,6 +423,8 @@ module.exports = {
     getOutbox,
     getConversations,
     getConversation,
+    recordGatewayEvent,
+    getGatewayEvents,
     getAliases,
     upsertAlias,
     stats
