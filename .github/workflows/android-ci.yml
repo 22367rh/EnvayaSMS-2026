@@ -11,42 +11,42 @@ concurrency:
 
 jobs:
   build:
-    name: Build Release APK
+    name: Build Debug APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 17 (required by AGP 8.x)
+      - name: Setup JDK 21 (required by Gradle daemon JVM)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: gradle
 
       - name: Set up Android SDK (installs platform + accepts licenses)
         uses: android-actions/setup-android@v3
 
       - name: Run unit tests (Java/Kotlin)
-        run: ./gradlew :app:testReleaseUnitTest --no-daemon --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Upload unit test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: envaya-sms-unit-test-results
-          path: app/build/test-results/release/unitTest.xml
+          path: app/build/test-results/testDebugUnitTest/*.xml
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Build release APK
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK artifact
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: envaya-sms-release-apk
-          path: app/build/outputs/apk/release/*.apk
+          name: envaya-sms-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
