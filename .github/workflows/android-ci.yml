@@ -30,6 +30,9 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Run unit tests (Java/Kotlin)
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
