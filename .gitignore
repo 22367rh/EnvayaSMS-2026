@@ -12,3 +12,4 @@ cmdline-tools/*
 build/
 *.apk
 *.aab
+github-ci-logs/
