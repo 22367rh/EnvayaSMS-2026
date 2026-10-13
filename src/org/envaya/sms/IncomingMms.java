@@ -8,10 +8,8 @@ import java.util.ArrayList;
 import org.json.*;
 
 import java.util.List;
-import org.apache.http.entity.mime.FormBodyPart;
-import org.apache.http.entity.mime.content.ByteArrayBody;
-import org.apache.http.entity.mime.content.ContentBody;
 import org.envaya.sms.task.ForwarderTask;
+import org.envaya.sms.task.MultipartPart;
 
 public class IncomingMms extends IncomingMessage {
     private List<MmsPart> parts;
@@ -79,7 +77,7 @@ public class IncomingMms extends IncomingMessage {
     @Override
     protected ForwarderTask getForwarderTask()
     {        
-        List<FormBodyPart> formParts = new ArrayList<FormBodyPart>();        
+        List<MultipartPart> formParts = new ArrayList<MultipartPart>();        
         
         int i = 0;
                 
@@ -92,7 +90,7 @@ public class IncomingMms extends IncomingMessage {
             String contentType = part.getContentType();
             String partName = part.getName();            
             
-            ContentBody body;
+            byte[] data;
             
             if (text != null)
             {                
@@ -101,7 +99,7 @@ public class IncomingMms extends IncomingMessage {
                     contentType += "; charset=UTF-8";
                 }                
                 
-                body = new ByteArrayBody(text.getBytes(), contentType, partName);
+                data = text.getBytes();
             }
             else
             {
@@ -111,7 +109,7 @@ public class IncomingMms extends IncomingMessage {
                 
                 try
                 {
-                    body = new ByteArrayBody(part.getData(), contentType, partName);
+                    data = part.getData();
                 }
                 catch (IOException ex)
                 {
@@ -136,7 +134,7 @@ public class IncomingMms extends IncomingMessage {
             }
             
             
-            formParts.add(new FormBodyPart(formFieldName, body));                            
+            formParts.add(new MultipartPart(formFieldName, partName, contentType, data));                            
             i++;
         }
         

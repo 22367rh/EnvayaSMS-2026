@@ -1,0 +1,31 @@
+site_name: EnvayaSMS Documentation
+site_description: >-
+  Architecture and reference documentation for the EnvayaSMS Android application.
+repo_url: https://github.com/envaya/EnvayaSMS-2026
+theme:
+  name: mkdocs
+  features:
+    - navigation.top
+    - content.code.copy
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - fenced_code
+  - codehilite:
+      css_class: highlight
+  - tables
+nav:
+  - Home: index.md
+  - 1. Overview & Getting Started: overview.md
+  - 2. Architecture: architecture.md
+  - 3. Message Receiving: incoming-messages.md
+  - 4. Message Sending: outgoing-messages.md
+  - 5. Server Communication: server-communication.md
+  - 6. Real-time AMQP Connection: amqp-connection.md
+  - 7. Persistence & Reliability: persistence-and-reliability.md
+  - 8. UI & Settings: ui-and-settings.md
+  - 9. Server-Side Integration: server-side-integration.md
+  - A. Class Reference: class-reference.md
+  - B. Glossary & Config Keys: glossary.md

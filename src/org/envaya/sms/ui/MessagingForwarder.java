@@ -135,13 +135,12 @@ public abstract class MessagingForwarder extends ListActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle item selection
-        switch (item.getItemId()) {
-        case R.id.forward_all:
+        int itemId = item.getItemId();
+        if (itemId == R.id.forward_all) {
             forwardAllClicked();
             return true;
-        default:
-            return super.onOptionsItemSelected(item);
         }
+        return super.onOptionsItemSelected(item);
     }    
     
     // first time the Menu key is pressed

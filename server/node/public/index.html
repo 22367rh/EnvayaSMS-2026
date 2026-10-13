@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EnvayaSMS Gateway</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        /* Public landing page — kept self-contained so "/" loads with zero JavaScript. */
+        body.landing { background: #0f172a; color: #e2e8f0; min-height: 100vh; margin: 0; }
+        .lp-container { max-width: 960px; margin: 0 auto; padding: 56px 20px 72px; }
+        .brand-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+        .brand-row h1 { color: #fff; font-size: 30px; margin: 0; letter-spacing: -0.02em; }
+        .badge { font-size: 12px; font-weight: 600; background: rgba(37,99,235,.18); color: #93c5fd;
+                 border: 1px solid rgba(59,130,246,.4); padding: 3px 10px; border-radius: 999px; }
+        .lede { font-size: 18px; color: #cbd5e1; max-width: 62ch; line-height: 1.6; margin: 8px 0 28px; }
+        .cta { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 44px; }
+        .btn-lg { display: inline-block; text-decoration: none; font-weight: 700; font-size: 16px;
+                  padding: 13px 24px; border-radius: 10px; transition: filter .15s ease; }
+        .btn-primary { background: #2563eb; color: #fff; }
+        .btn-primary:hover { filter: brightness(1.08); }
+        .btn-ghost { background: transparent; color: #e2e8f0; border: 1px solid #334155; }
+        .btn-ghost:hover { border-color: #64748b; }
+        .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 40px; }
+        .tile { background: #111c30; border: 1px solid #1f2a44; border-radius: 14px; padding: 20px 22px; }
+        .tile h3 { color: #fff; font-size: 15px; margin: 0 0 8px; }
+        .tile p { margin: 0; font-size: 14px; color: #9fb0cc; line-height: 1.55; }
+        .tile .ico { font-size: 20px; margin-bottom: 10px; display: block; }
+        .steps { background: #111c30; border: 1px solid #1f2a44; border-radius: 14px; padding: 8px 26px; }
+        .steps h2 { color: #fff; font-size: 18px; margin: 28px 0 12px; }
+        ol.landing-steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
+        ol.landing-steps li { counter-increment: step; position: relative; padding: 12px 0 12px 56px; color: #cbd5e1; font-size: 15px; line-height: 1.55; }
+        ol.landing-steps li::before { counter-increment: none; content: counter(step); position: absolute; left: 0; top: 10px;
+            width: 32px; height: 32px; border-radius: 50%; background: #2563eb; color: #fff; font-weight: 700;
+            display: grid; place-items: center; font-size: 15px; }
+        code { background: rgba(255,255,255,.08); padding: 2px 7px; border-radius: 6px; font-size: 13px; color: #e2e8f0; }
+        .footnote { margin-top: 40px; padding-top: 20px; border-top: 1px solid #1f2a44; color: #64748b; font-size: 13px; }
+    </style>
+</head>
+<body class="landing">
+    <div class="lp-container">
+        <div class="brand-row">
+            <h1>EnvayaSMS Gateway</h1>
+            <span class="badge">Node · multi-tenant</span>
+        </div>
+        <p class="lede">
+            The message hub that lets a fleet of Android EnvayaSMS devices receive SMS, send replies, stream
+            battery/telemetry and exchange MMS &mdash; all through one dependency-free server process. This is the
+            operator console for that gateway.
+        </p>
+
+        <div class="cta">
+            <a class="btn-lg btn-primary" href="/console">Open console</a>
+            <a class="btn-lg btn-ghost" href="#setup">How to get set up</a>
+        </div>
+
+        <div class="grid-2">
+            <div class="tile">
+                <span class="ico">&#9783;</span>
+                <h3>Receive SMS / MMS</h3>
+                <p>Devices report inbound messages straight into the gateway; they aggregate across every device.</p>
+            </div>
+            <div class="tile">
+                <span class="ico">&#9993;</span>
+                <h3>Send on demand</h3>
+                <p>Queue outbound messages and let devices poll for work, or push via the AMQP path.</p>
+            </div>
+            <div class="tile">
+                <span class="ico">&#9735;</span>
+                <h3>Device health</h3>
+                <p>Battery level, charging state and network type stream in per device, over time.</p>
+            </div>
+            <div class="tile">
+                <span class="ico">&#128274;</span>
+                <h3>Per-tenant isolation</h3>
+                <p>Each user's data lives in its own database. Signatures are byte-compatible with the reference protocol.</p>
+            </div>
+        </div>
+
+        <div class="steps" id="setup">
+            <h2>How to get set up</h2>
+            <ol class="landing-steps">
+                <li><strong>Create an account and sign in</strong> from the console at <code>/console</code>. Registration mints a login password plus a separate device shared secret.</li>
+                <li><strong>Copy your device configuration.</strong> On the Dashboard you'll see a Server URL like <code>http://&lt;host&gt;:&lt;port&gt;/&lt;user&gt;/gateway</code> and a shared secret.</li>
+                <li><strong>Point each Android device at it.</strong> In EnvayaSMS settings set <em>Server URL</em> to that <code>/&lt;user&gt;/gateway</code> address and <em>Password</em> to the shared secret.</li>
+                <li><strong>Watch it come alive.</strong> Devices appear under <em>Devices</em>; read messages in <em>Inbox</em>/<em>Outbox</em>, per-number <em>Conversations</em>, and battery/volume charts under <em>History</em>.</li>
+            </ol>
+        </div>
+
+        <p class="footnote">
+            The console is an internal ops tool served over HTTP. Terminate TLS at a proxy in production so the
+            session cookie can be marked <code>Secure</code>. Your login password and your devices' shared secret are
+            intentionally different values &mdash; changing one never breaks the other.
+        </p>
+    </div>
+</body>
+</html>

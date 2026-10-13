@@ -7,19 +7,19 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpResponse;
+import okhttp3.Response;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 public class JsonUtils {
 
-    public static JSONObject parseResponse(HttpResponse response)
+    public static JSONObject parseResponse(Response response)
             throws IOException, JSONException
     {
-        String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");            
-        return new JSONObject(responseBody);                 
+        // Consume the OkHttp body exactly once (decoded as UTF-8).
+        String responseBody = response.body().string();
+        return new JSONObject(responseBody);
     }
 
     public static String getErrorText(JSONObject json) 

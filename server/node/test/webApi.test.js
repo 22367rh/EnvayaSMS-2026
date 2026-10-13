@@ -1,0 +1,273 @@
+'use strict';
+
+/*
+ * Tests for the web-dashboard API (src/webApi.js): account registration/login/logout, password
+ * changes, session cookies, device configuration reveal, and per-tenant isolation. Runs in its own
+ * Node process pointing config at throwaway temp databases BEFORE requiring the source modules.
+ */
+
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const assert = require('assert');
+
+// --- throwaway data dirs (must be set before requiring src/config) ------------------------------
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'envayasms-webtest-'));
+process.env.CORE_DB = path.join(TMP, 'Core.db');
+process.env.DB_DIR = path.join(TMP, 'dbs');
+process.env.MEDIA_DIR = path.join(TMP, 'media');
+process.env.GATEWAY_MASTER_KEY = 'web-test-master-key-do-not-use-in-prod';
+
+const coreDb = require('../src/coreDb');
+const userDb = require('../src/userDb');
+const { createWebApi } = require('../src/webApi');
+const { decryptSecret } = require('../src/crypto');
+const { test } = require('node:test');
+
+const api = createWebApi({ coreDb, userDb });
+
+function register(username, password) {
+    return api.handle({ url: '/api/register', method: 'POST', headers: {}, bodyJson: { username, password } });
+}
+function login(username, password) {
+    return api.handle({ url: '/api/login', method: 'POST', headers: {}, bodyJson: { username, password } });
+}
+function withSession(result) {
+    const c = result.setCookie;
+    return { cookie: c.name + '=' + c.value, token: c.value, setCookie: c };
+}
+
+async function registerUser(username) {
+    const r = await register(username, 'hunter2x');
+    assert.strictEqual(r.status, 201);
+    return withSession(r);
+}
+
+// --- registration / login -----------------------------------------------------------------------
+test('register creates an account and issues a session cookie', async () => {
+    const u = 'web_' + Date.now().toString(36);
+    const r = await register(u, 'hunter2x');
+    assert.strictEqual(r.status, 201);
+    assert.ok(r.setCookie && r.setCookie.name === 'session' && r.setCookie.value, 'should set a session cookie');
+    assert.strictEqual(JSON.parse(r.body).user.username, u);
+    // The account exists in Core.db with an encrypted (not plaintext) password.
+    const row = coreDb.getUserByUsername(u);
+    assert.notStrictEqual(row.password_hash, 'hunter2x');
+});
+
+test('duplicate registration is rejected 409', async () => {
+    const u = 'dup_' + Date.now().toString(36);
+    await register(u, 'hunter2x');
+    const again = await register(u, 'hunter2x');
+    assert.strictEqual(again.status, 409);
+});
+
+// --- registration profile fields (email / primary contact) ------------------------------------
+test('registration stores and returns email + primary contact number', async () => {
+    const u = 'prof_' + Date.now().toString(36);
+    const r = await api.handle({ url: '/api/register', method: 'POST', headers: {}, bodyJson: {
+        username: u, password: 'hunter2x', email: 'alice@example.com', phone_number: '+15551230000'
+    } });
+    assert.strictEqual(r.status, 201, 'register should succeed');
+    const user = JSON.parse(r.body).user;
+    assert.strictEqual(user.email, 'alice@example.com', 'email round-trips through /api/register -> /api/me');
+    assert.strictEqual(user.phone_number, '+15551230000', 'phone round-trips too');
+
+    // It is persisted in Core.db (not just echoed back).
+    const row = coreDb.getUserByUsername(u);
+    assert.strictEqual(row.email, 'alice@example.com');
+    assert.strictEqual(row.phone_number, '+15551230000');
+});
+
+test('registration rejects a malformed email but allows empty contact fields', async () => {
+    const bad = 'bademail_' + Date.now().toString(36);
+    const br = await api.handle({ url: '/api/register', method: 'POST', headers: {}, bodyJson: { username: bad, password: 'hunter2x', email: 'not-an-email' } });
+    assert.strictEqual(br.status, 400, 'malformed email should be rejected');
+
+    const oku = 'okcontact_' + Date.now().toString(36);
+    const orr = await api.handle({ url: '/api/register', method: 'POST', headers: {}, bodyJson: { username: oku, password: 'hunter2x' } });
+    assert.strictEqual(orr.status, 201, 'empty contact fields should be allowed');
+});
+
+test('short password is rejected at registration', async () => {
+    const r = await register('shortpw_' + Date.now().toString(36), '123');
+    assert.strictEqual(r.status, 400);
+});
+
+test('login works and rejects wrong credentials (401)', async () => {
+    const u = 'login_' + Date.now().toString(36);
+    await register(u, 'hunter2x');
+    const ok = await login(u, 'hunter2x');
+    assert.strictEqual(ok.status, 200);
+    assert.ok(ok.setCookie && ok.setCookie.value);
+
+    const bad = await login(u, 'wrongpass');
+    assert.strictEqual(bad.status, 401);
+    // A wrong password for a non-existent user is also 401 (no enumeration).
+    const ghost = await login('ghost_' + Date.now().toString(36), 'whatever');
+    assert.strictEqual(ghost.status, 401);
+});
+
+// --- session / auth -----------------------------------------------------------------------------
+test('authenticated endpoints require a valid session cookie', async () => {
+    const u = 'authn_' + Date.now().toString(36);
+    await registerUser(u);
+
+    // No cookie -> 401.
+    let r = await api.handle({ url: '/api/me', method: 'GET', headers: {}, bodyJson: {} });
+    assert.strictEqual(r.status, 401);
+
+    // With a valid cookie -> 200.
+    const reg = await register(u + '_x', 'hunter2x');
+    const { cookie } = withSession(reg);
+    r = await api.handle({ url: '/api/me', method: 'GET', headers: { cookie }, bodyJson: {} });
+    assert.strictEqual(r.status, 200);
+});
+
+test('logout destroys the session and clears the cookie', async () => {
+    const u = 'logout_' + Date.now().toString(36);
+    const reg = await registerUser(u);
+    const token = reg.token;
+
+    // Session is valid before logout.
+    let r = await api.handle({ url: '/api/me', method: 'GET', headers: { cookie: 'session=' + token }, bodyJson: {} });
+    assert.strictEqual(r.status, 200);
+
+    const lg = await api.handle({ url: '/api/logout', method: 'POST', headers: { cookie: 'session=' + token }, bodyJson: {} });
+    assert.strictEqual(lg.status, 200);
+    assert.strictEqual(lg.setCookie.maxAgeSeconds, 0, 'logout should clear the cookie');
+
+    // Same token is now invalid.
+    r = await api.handle({ url: '/api/me', method: 'GET', headers: { cookie: 'session=' + token }, bodyJson: {} });
+    assert.strictEqual(r.status, 401);
+});
+
+// --- configuration reveal -----------------------------------------------------------------------
+test('config reveals server_url/username and a secret distinct from the login password', async () => {
+    const u = 'cfg_' + Date.now().toString(36);
+    const reg = await registerUser(u);
+    const cfgRes = await api.handle({ url: '/api/config', method: 'GET', headers: { cookie: reg.cookie }, bodyJson: {} });
+    assert.strictEqual(cfgRes.status, 200);
+    const cfg = JSON.parse(cfgRes.body);
+    assert.ok(new RegExp('/' + u + '/gateway$').test(cfg.server_url), 'server_url should be /<user>/gateway');
+    assert.strictEqual(cfg.username, u);
+    assert.notStrictEqual(cfg.shared_secret, 'hunter2x', 'device secret must differ from login password');
+    // The stored (encrypted) value decrypts to the revealed secret.
+    const row = coreDb.getUserByUsername(u);
+    assert.strictEqual(decryptSecret(row.password_enc), cfg.shared_secret);
+});
+
+test('config is isolated per tenant', async () => {
+    const a = 'iso_a_' + Date.now().toString(36);
+    const b = 'iso_b_' + Date.now().toString(36);
+    const ra = await registerUser(a);
+    const rb = await registerUser(b);
+    const caRes = await api.handle({ url: '/api/config', method: 'GET', headers: { cookie: ra.setCookie.name + '=' + ra.setCookie.value }, bodyJson: {} });
+    const cbRes = await api.handle({ url: '/api/config', method: 'GET', headers: { cookie: rb.setCookie.name + '=' + rb.setCookie.value }, bodyJson: {} });
+    const ca = JSON.parse(caRes.body);
+    const cb = JSON.parse(cbRes.body);
+    assert.notStrictEqual(ca.shared_secret, cb.shared_secret, 'tenants must get different secrets');
+});
+
+// --- password change ----------------------------------------------------------------------------
+test('changing the login password invalidates existing sessions', async () => {
+    const u = 'pw_' + Date.now().toString(36);
+    const reg = await registerUser(u);
+    const token = reg.token;
+
+    // Change password.
+    const cp = await api.handle({
+        url: '/api/change-password', method: 'POST', headers: { cookie: reg.setCookie.name + '=' + reg.setCookie.value },
+        bodyJson: { currentPassword: 'hunter2x', newPassword: 'brandnew9' }
+    });
+    assert.strictEqual(cp.status, 200);
+
+    // Old session token is gone.
+    let r = await api.handle({ url: '/api/me', method: 'GET', headers: { cookie: 'session=' + token }, bodyJson: {} });
+    assert.strictEqual(r.status, 401);
+
+    // Login with the new password works; wrong current password on a second change is rejected.
+    const login2 = await login(u, 'brandnew9');
+    assert.strictEqual(login2.status, 200);
+
+    const badCurrent = await api.handle({
+        url: '/api/change-password', method: 'POST', headers: { cookie: reg.setCookie.name + '=' + reg.setCookie.value },
+        bodyJson: { currentPassword: 'nope-wrong', newPassword: 'another1' }
+    });
+    assert.strictEqual(badCurrent.status, 401);
+});
+
+// --- analytics endpoints (empty DB) -------------------------------------------------------------
+test('history / inbox / outbox / conversations return empty arrays for a fresh tenant', async () => {
+    const u = 'data_' + Date.now().toString(36);
+    const reg = await registerUser(u);
+    const hdrs = { cookie: reg.setCookie.name + '=' + reg.setCookie.value };
+    for (const p of ['/api/history?range=24h', '/api/inbox', '/api/outbox', '/api/conversations']) {
+        const r = await api.handle({ url: p, method: 'GET', headers: hdrs, bodyJson: {} });
+        assert.strictEqual(r.status, 200, p);
+    }
+    const hist = JSON.parse((await api.handle({ url: '/api/history?range=24h', method: 'GET', headers: hdrs, bodyJson: {} })).body);
+    assert.ok(Array.isArray(hist.battery) && Array.isArray(hist.buckets));
+});
+
+// --- phone-number aliases ----------------------------------------------------------------------
+test('aliases are stored per tenant and isolated across tenants', async () => {
+    const u = 'alias_' + Date.now().toString(36);
+    const reg = await registerUser(u);
+    const hdrs = { cookie: reg.setCookie.name + '=' + reg.setCookie.value };
+
+    // GET starts empty.
+    let list = JSON.parse((await api.handle({ url: '/api/aliases', method: 'GET', headers: hdrs, bodyJson: {} })).body).aliases;
+    assert.deepStrictEqual(list, []);
+
+    // Set an alias; it round-trips back verbatim.
+    const put = await api.handle({ url: '/api/aliases', method: 'POST', headers: hdrs, bodyJson: { phone: '+15551230000', alias: 'Mom' } });
+    assert.strictEqual(put.status, 200);
+    list = JSON.parse(put.body).aliases;
+    assert.deepStrictEqual(list, [{ phone: '+15551230000', alias: 'Mom' }]);
+
+    // An empty/whitespace alias removes the mapping.
+    const del = await api.handle({ url: '/api/aliases', method: 'POST', headers: hdrs, bodyJson: { phone: '+15551230000', alias: '   ' } });
+    assert.deepStrictEqual(JSON.parse(del.body).aliases, []);
+
+    // Another tenant cannot see this tenant's aliases.
+    const other = await registerUser('other_' + Date.now().toString(36));
+    const peek = await api.handle({ url: '/api/aliases', method: 'GET', headers: { cookie: other.setCookie.name + '=' + other.setCookie.value }, bodyJson: {} });
+    assert.deepStrictEqual(JSON.parse(peek.body).aliases, []);
+
+    // Unauthenticated requests are rejected.
+    const anon = await api.handle({ url: '/api/aliases', method: 'GET', headers: {}, bodyJson: {} });
+    assert.strictEqual(anon.status, 401);
+});
+
+// --- gateway activity --------------------------------------------------------------------------
+test('gateway-events returns recorded activity and is isolated per tenant', async () => {
+    const u = 'act_' + Date.now().toString(36);
+    const reg = await registerUser(u);
+    const hdrs = { cookie: reg.setCookie.name + '=' + reg.setCookie.value };
+
+    // Unauthenticated requests are rejected.
+    const anon = await api.handle({ url: '/api/gateway-events', method: 'GET', headers: {}, bodyJson: {} });
+    assert.strictEqual(anon.status, 401);
+
+    // Empty for a fresh tenant.
+    let list = JSON.parse((await api.handle({ url: '/api/gateway-events', method: 'GET', headers: hdrs, bodyJson: {} })).body).events;
+    assert.deepStrictEqual(list, []);
+
+    // Record an event directly in this tenant's DB (as the gateway would for an authenticated request).
+    const db = userDb.openUserDb(u);
+    userDb.recordGatewayEvent(db, { action: 'incoming', phoneId: 'dev-1', fromNumber: '15551112222', battery: 73, network: 'WIFI' });
+
+    const data = JSON.parse((await api.handle({ url: '/api/gateway-events?limit=50', method: 'GET', headers: hdrs, bodyJson: {} })).body);
+    assert.strictEqual(data.events.length, 1);
+    const ev = data.events[0];
+    assert.strictEqual(ev.action, 'incoming');
+    assert.strictEqual(ev.authenticated, 1);
+    assert.strictEqual(ev.phone_id, 'dev-1');
+    assert.strictEqual(Number(ev.battery), 73);
+
+    // Another tenant must not see this tenant's activity.
+    const other = await registerUser('otheract_' + Date.now().toString(36));
+    const peek = JSON.parse((await api.handle({ url: '/api/gateway-events', method: 'GET', headers: { cookie: other.setCookie.name + '=' + other.setCookie.value }, bodyJson: {} })).body).events;
+    assert.deepStrictEqual(peek, []);
+});

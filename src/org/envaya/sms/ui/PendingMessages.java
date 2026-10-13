@@ -10,6 +10,7 @@ import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
+import androidx.core.content.ContextCompat;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -60,7 +61,7 @@ public class PendingMessages extends ListActivity {
         IntentFilter refreshReceiverFilter = new IntentFilter();        
         refreshReceiverFilter.addAction(App.INBOX_CHANGED_INTENT);
         refreshReceiverFilter.addAction(App.OUTBOX_CHANGED_INTENT);
-        registerReceiver(refreshReceiver, refreshReceiverFilter);        
+        ContextCompat.registerReceiver(this, refreshReceiver, refreshReceiverFilter, ContextCompat.RECEIVER_NOT_EXPORTED);        
         
         ListView listView = getListView();        
         
@@ -250,16 +251,15 @@ public class PendingMessages extends ListActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle item selection
-        switch (item.getItemId()) {
-        case R.id.retry_all:
+        int itemId = item.getItemId();
+        if (itemId == R.id.retry_all) {
             retryAllClicked();
             return true;
-        case R.id.delete_all:
+        } else if (itemId == R.id.delete_all) {
             deleteAllClicked();
-            return true;            
-        default:
-            return super.onOptionsItemSelected(item);
+            return true;
         }
+        return super.onOptionsItemSelected(item);
     }    
     
     // first time the Menu key is pressed

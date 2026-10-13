@@ -9,6 +9,7 @@ import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceScreen;
 import android.view.Menu;
+import androidx.core.content.ContextCompat;
 import org.envaya.sms.App;
 import org.envaya.sms.R;
 
@@ -32,7 +33,7 @@ public class ExpansionPacks extends PreferenceActivity  {
         
         IntentFilter installReceiverFilter = new IntentFilter();        
         installReceiverFilter.addAction(App.EXPANSION_PACKS_CHANGED_INTENT);        
-        registerReceiver(installReceiver, installReceiverFilter);        
+        ContextCompat.registerReceiver(this, installReceiver, installReceiverFilter, ContextCompat.RECEIVER_NOT_EXPORTED);        
         
         updateInstallStatus();
     }    

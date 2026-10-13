@@ -5,7 +5,7 @@
          android:layout_height="fill_parent"
          android:paddingLeft="8dp"
          android:paddingRight="8dp">
-    <Spinner android:id="@+android:id/inbox_selector"
+    <Spinner android:id="@+id/inbox_selector"
            android:layout_width="fill_parent"
         android:layout_height="wrap_content">        
     </Spinner>

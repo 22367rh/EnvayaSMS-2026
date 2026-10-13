@@ -82,7 +82,7 @@ public abstract class QueuedMessage
         PendingIntent pendingIntent = PendingIntent.getBroadcast(app,
                 0,
                 getRetryIntent(),
-                0);
+                PendingIntent.FLAG_IMMUTABLE);
 
         alarm.set(
                 AlarmManager.ELAPSED_REALTIME_WAKEUP,

@@ -7,7 +7,7 @@ import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.text.Html;
+import androidx.core.text.HtmlCompat;
 import android.view.View;
 import android.widget.TextView;
 import org.envaya.sms.App;
@@ -30,7 +30,7 @@ public class Help extends Activity {
         String html = "<b>"+getText(R.string.app_name)+" " + app.getPackageInfo().versionName + "</b><br /><br />"                
             + "Menu icons cc/by www.androidicons.com<br /><br />";
         
-        help.setText(Html.fromHtml(html));                        
+        help.setText(HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT));                        
         
     }
     

@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Set;
-import org.apache.http.message.BasicNameValuePair;
+import org.envaya.sms.task.NameValuePair;
 import org.envaya.sms.receiver.DequeueOutgoingMessageReceiver;
 import org.envaya.sms.task.HttpTask;
 
@@ -83,18 +83,20 @@ public class Outbox {
 
         if (serverId != null) {
             app.log("Notifying server " + smsDesc + " " + logMessage);
+            app.recordOutgoingMessage();
 
             HttpTask task = new HttpTask(app,
-                new BasicNameValuePair("id", serverId),
-                new BasicNameValuePair("status", status),
-                new BasicNameValuePair("error", errorMessage),
-                new BasicNameValuePair("action", App.ACTION_SEND_STATUS)                    
+                new NameValuePair("id", serverId),
+                new NameValuePair("status", status),
+                new NameValuePair("error", errorMessage),
+                new NameValuePair("action", App.ACTION_SEND_STATUS)                    
             );
             task.setRetryOnConnectivityError(true);
             task.execute();
             
         } else {
             app.log(smsDesc + " " + logMessage);
+            app.recordOutgoingMessage();
         }
     }
     
@@ -260,7 +262,7 @@ public class Outbox {
                 PendingIntent pendingIntent = PendingIntent.getBroadcast(app,
                     0,
                     intent,
-                    0);
+                    PendingIntent.FLAG_IMMUTABLE);
 
                 alarm.set(
                     AlarmManager.RTC_WAKEUP,

@@ -17,13 +17,16 @@
 package org.envaya.sms.service;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
+import android.os.Build;
 import android.util.Log;
 import org.envaya.sms.App;
+import org.envaya.sms.PermissionHelper;
 import org.envaya.sms.R;
 
 import java.lang.reflect.InvocationTargetException;
@@ -110,6 +113,14 @@ public class ForegroundService extends Service {
     public void onCreate() {
         mNM = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
         app = (App)getApplication();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            String channelId = "envaya_sms_service";
+            CharSequence channelName = getString(R.string.app_name);
+            NotificationChannel channel = new NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW);
+            mNM.createNotificationChannel(channel);
+        }
+
         try {
             mStartForeground = getClass().getMethod("startForeground",
                     mStartForegroundSignature);
@@ -156,15 +167,40 @@ public class ForegroundService extends Service {
         if (app.isEnabled())           
         {
             CharSequence text = getText(R.string.service_started);
-            
-            Notification notification = new Notification(R.drawable.icon, text,
-                    System.currentTimeMillis());
 
-            PendingIntent contentIntent = PendingIntent.getActivity(this, 0,
-                    new Intent(this, Main.class), 0);
+            // API 33+: POST_NOTIFICATIONS must be granted before the notification is shown.
+            // Until then we still call startForeground() (required to keep the process alive)
+            // but with a minimal, content-free notification so nothing leaks to the user.
+            boolean showFullNotification = Build.VERSION.SDK_INT < 33
+                    || PermissionHelper.hasPermission(this, PermissionHelper.POST_NOTIFICATIONS);
 
-            CharSequence info = getText(R.string.running);
-            notification.setLatestEventInfo(this, info, text, contentIntent);
+            String channelId = "envaya_sms_service";
+            Notification.Builder builder;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder = new Notification.Builder(this, channelId);
+            } else {
+                builder = new Notification.Builder(this);
+            }
+
+            builder.setSmallIcon(R.drawable.icon)
+                    .setWhen(System.currentTimeMillis());
+
+            if (showFullNotification) {
+                PendingIntent contentIntent = PendingIntent.getActivity(this, 0,
+                        new Intent(this, Main.class), PendingIntent.FLAG_IMMUTABLE);
+                builder.setContentTitle(getText(R.string.running))
+                        .setContentText(text)
+                        .setContentIntent(contentIntent);
+            } else {
+                // POST_NOTIFICATIONS not granted yet: still satisfy startForeground() with a
+                // minimal placeholder so the process stays alive without leaking content.
+                builder.setContentTitle(getText(R.string.running));
+            }
+
+            // Notification assembled via Notification.Builder: the old
+            // Notification(int,CharSequence,long) constructor and
+            // setLatestEventInfo(...) were removed in API 31.
+            Notification notification = builder.build();
 
             startForegroundCompat(R.string.service_started, notification);            
         }

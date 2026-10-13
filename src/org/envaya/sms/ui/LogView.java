@@ -9,7 +9,8 @@ import android.content.DialogInterface.OnClickListener;
 import android.net.Uri;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.text.Html;
+import androidx.core.content.ContextCompat;
+import androidx.core.text.HtmlCompat;
 import android.text.method.LinkMovementMethod;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -18,8 +19,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import org.apache.http.HttpResponse;
-import org.apache.http.message.BasicNameValuePair;
+import okhttp3.Response;
+import org.envaya.sms.task.NameValuePair;
 import org.envaya.sms.App;
 import org.envaya.sms.R;
 import java.util.ArrayList;
@@ -59,13 +60,21 @@ public class LogView extends Activity {
     private class TestTask extends HttpTask
     {
         public TestTask() {
-            super(LogView.this.app, new BasicNameValuePair("action", App.ACTION_TEST));   
+            super(LogView.this.app, new NameValuePair("action", App.ACTION_TEST));   
         }
         
         @Override
-        protected void handleResponse(HttpResponse response) throws Exception 
+        protected void handleResponse(Response response) throws Exception 
         {
-            app.log("Server connection OK!");            
+            app.log("Server connection OK!");
+
+            // Connection succeeded: send an initial device status message so the
+            // server knows this device just came online.
+            HttpTask statusTask = new HttpTask(app,
+                new NameValuePair("action", App.ACTION_DEVICE_STATUS),
+                new NameValuePair("status", App.DEVICE_STATUS_ONLINE));
+            statusTask.setRetryOnConnectivityError(true);
+            statusTask.execute(App.httpExecutor);
         }
     }
     
@@ -140,9 +149,9 @@ public class LogView extends Activity {
         updateUpgradeButton();
         updateLogView();
         
-        registerReceiver(logReceiver, new IntentFilter(App.LOG_CHANGED_INTENT));        
-        registerReceiver(settingsReceiver, new IntentFilter(App.SETTINGS_CHANGED_INTENT));        
-        registerReceiver(expansionPacksReceiver, new IntentFilter(App.EXPANSION_PACKS_CHANGED_INTENT));        
+        ContextCompat.registerReceiver(this, logReceiver, new IntentFilter(App.LOG_CHANGED_INTENT), ContextCompat.RECEIVER_NOT_EXPORTED);        
+        ContextCompat.registerReceiver(this, settingsReceiver, new IntentFilter(App.SETTINGS_CHANGED_INTENT), ContextCompat.RECEIVER_NOT_EXPORTED);        
+        ContextCompat.registerReceiver(this, expansionPacksReceiver, new IntentFilter(App.EXPANSION_PACKS_CHANGED_INTENT), ContextCompat.RECEIVER_NOT_EXPORTED);        
 
         if (savedInstanceState == null)
         {
@@ -176,9 +185,10 @@ public class LogView extends Activity {
     {       
         boolean enabled = app.isEnabled();
         
-        heading.setText(Html.fromHtml(
+        heading.setText(HtmlCompat.fromHtml(
              enabled ? "<b>" + getText(R.string.running) + " ("+app.getPhoneNumber()+")</b>" 
-                : "<b>" +getText(R.string.disabled) + "</b>"));       
+                : "<b>" +getText(R.string.disabled) + "</b>",
+            HtmlCompat.FROM_HTML_MODE_COMPACT));       
         
         if (enabled)
         {
@@ -327,29 +337,31 @@ public class LogView extends Activity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle item selection
-        switch (item.getItemId()) {
-        case R.id.settings:
+        int itemId = item.getItemId();
+        if (itemId == R.id.settings) {
             startActivity(new Intent(this, Prefs.class));
             return true;
-        case R.id.check_now:              
+        } else if (itemId == R.id.check_now) {
             app.checkOutgoingMessages();
             return true;
-        case R.id.retry_now:                            
+        } else if (itemId == R.id.retry_now) {
             app.retryStuckMessages();
-            return true; 
-        case R.id.forward_saved:
+            return true;
+        } else if (itemId == R.id.forward_saved) {
             startActivity(new Intent(this, MessagingSmsInbox.class));
             return true;
-        case R.id.pending:
+        } else if (itemId == R.id.pending) {
             startActivity(new Intent(this, PendingMessages.class));
             return true;
-        case R.id.test:            
+        } else if (itemId == R.id.status) {
+            startActivity(new Intent(this, StatusView.class));
+            return true;
+        } else if (itemId == R.id.test) {
             app.log("Testing server connection...");
             new TestTask().execute();
             return true;
-        default:
-            return super.onOptionsItemSelected(item);
         }
+        return super.onOptionsItemSelected(item);
     }        
     
     // first time the Menu key is pressed

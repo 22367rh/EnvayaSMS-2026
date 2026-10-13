@@ -1,22 +1,31 @@
 package org.envaya.sms.service;
 
 import android.app.AlarmManager;
-import android.app.IntentService;
+import androidx.core.app.JobIntentService;
+import androidx.core.content.ContextCompat;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import org.envaya.sms.App;
 import org.envaya.sms.receiver.NudgeReceiver;
 
-public class EnabledChangedService extends IntentService {
+public class EnabledChangedService extends JobIntentService {
     
+    private static final int WORK_ID = 1;
+
+    public static void enqueueWork(Context context, Intent work)
+    {
+        JobIntentService.enqueueWork(context, EnabledChangedService.class, WORK_ID, work);
+    }
+
     private App app;
     
     public EnabledChangedService(String name)
     {
-        super(name);        
+        super();        
     }
     
     public EnabledChangedService()
@@ -33,34 +42,52 @@ public class EnabledChangedService extends IntentService {
     }      
     
     @Override
-    protected void onHandleIntent(Intent intent)
+    protected void onHandleWork(Intent intent)
     {  
-        TelephonyManager telephony = (TelephonyManager)   
-            getSystemService(Context.TELEPHONY_SERVICE);                  
-
-        startService(new Intent(app, ForegroundService.class));
-        
-        app.setOutgoingMessageAlarm();
-
-        AlarmManager alarmManager = (AlarmManager) app.getSystemService(Context.ALARM_SERVICE);
-        alarmManager.cancel(PendingIntent.getBroadcast(app, 0, new Intent(app, NudgeReceiver.class), 0));
-        
-        if (app.isEnabled())
+        try
         {
-            app.getMessagingObserver().register(); 
+            TelephonyManager telephony = (TelephonyManager)   
+                getSystemService(Context.TELEPHONY_SERVICE);                  
 
-            telephony.listen(app.getCallListener(), PhoneStateListener.LISTEN_CALL_STATE);          
-
-            app.getDatabaseHelper().restorePendingMessages();
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ContextCompat.startForegroundService(app, new Intent(app, ForegroundService.class));
+                } else {
+                    startService(new Intent(app, ForegroundService.class));
+                }
+            } catch (Exception e) {
+                app.logError("Failed to start ForegroundService", e);
+            }
             
-            app.getAmqpConsumer().startAsync();
-        }
-        else
-        {
-            app.getMessagingObserver().unregister();
-            telephony.listen(app.getCallListener(), PhoneStateListener.LISTEN_NONE);
+            app.setOutgoingMessageAlarm();
 
-            app.getAmqpConsumer().stopAsync();
+            AlarmManager alarmManager = (AlarmManager) app.getSystemService(Context.ALARM_SERVICE);
+            alarmManager.cancel(PendingIntent.getBroadcast(app, 0, new Intent(app, NudgeReceiver.class), PendingIntent.FLAG_IMMUTABLE));
+            
+            if (app.isEnabled())
+            {
+                app.getMessagingObserver().register(); 
+
+                telephony.listen(app.getCallListener(), PhoneStateListener.LISTEN_CALL_STATE);          
+
+                app.getDatabaseHelper().restorePendingMessages();
+                
+                app.getAmqpConsumer().startAsync();
+            }
+            else
+            {
+                app.getMessagingObserver().unregister();
+                telephony.listen(app.getCallListener(), PhoneStateListener.LISTEN_NONE);
+
+                app.getAmqpConsumer().stopAsync();
+            }
+        }
+        catch (Throwable t)
+        {
+            if (app != null)
+            {
+                app.logError("Error in EnabledChangedService", t);
+            }
         }                   
     }
 }
